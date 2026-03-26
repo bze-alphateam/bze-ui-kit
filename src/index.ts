@@ -22,6 +22,8 @@ export type {
     NativeUnbondingSummary, AddressRewardsStaking, ExtendedPendingUnlockParticipantSDKType
 } from './types/staking';
 export type { AddressValidationResult } from './types/validation';
+export type { BurnHistoryItem, NextBurn } from './types/burn';
+export type { BlockResults } from './types/block';
 export type {
     Attribute, TendermintEvent, InternalEvent, EventCallback
 } from './types/events';
@@ -115,7 +117,10 @@ export { keplrSuggestChain } from './service/keplr';
 // === Query ===
 export { getRestClient, createRestClient, getPageRequestWithLimit } from './query/client';
 export { getAddressBalances, getLockedBalances } from './query/bank';
-export { getBurnerParams, getBurnerParamsWithClient, getAllBurnedCoins } from './query/burner';
+export { getBurnerParams, getBurnerParamsWithClient, getAllBurnedCoins, getNextBurning } from './query/burner';
+export { getBlockDetailsByHeight, getBlockTimeByHeight, getBlockResults } from './query/block';
+export { getHardcodedLockAddress, getBurnerModuleAddress, getRaffleModuleAddress, getModuleAddress } from './query/module';
+export { getRaffles, getRaffleWinners, checkAddressWonRaffle } from './query/raffle';
 export { getAllSupply, getAllSupplyMetadata } from './query/supply';
 export {
     getEpochsInfo, getCurrentEpoch, getHourEpochInfo, getWeekEpochInfo,
