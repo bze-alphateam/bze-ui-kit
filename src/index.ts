@@ -171,6 +171,7 @@ export { useMarkets, useAssetMarkets, useMarket, useMarketsManager } from './hoo
 export { useToast } from './hooks/useToast';
 export { useSDKTx, useBZETx, useIBCTx, TxStatus } from './hooks/useTx';
 export type { TxOptions } from './hooks/useTx';
+export { useValidatorLogos } from './hooks/useValidatorLogos';
 
 // === Components ===
 export { Toaster } from './components/toaster';
