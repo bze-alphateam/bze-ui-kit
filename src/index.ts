@@ -178,3 +178,4 @@ export { Sidebar } from './components/sidebar/sidebar';
 export { SettingsSidebarContent } from './components/sidebar/settings-sidebar';
 export { WalletSidebarContent } from './components/sidebar/wallet-sidebar';
 export { SettingsToggle } from './components/settings-toggle';
+export { TestnetBanner } from './components/testnet-banner';
