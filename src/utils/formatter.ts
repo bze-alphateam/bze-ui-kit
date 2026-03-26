@@ -90,12 +90,37 @@ export const formatTimeRemaining = (targetDate: Date): string => {
     return parts.join(' ') || 'Now';
 }
 
-export const formatTimeRemainingFromEpochs = (epochs: BigNumber): string => {
-    if (epochs.lte(0)) {
+export function formatTimeRemainingFromEpochs(endEpoch: bigint | number | BigNumber, currentEpoch?: bigint | number | BigNumber): string {
+    let epochDiff: BigNumber;
+
+    if (currentEpoch !== undefined) {
+        // Two-arg form: (endEpoch, currentEpoch) — each epoch is 1 hour
+        const endBN = toBigNumber(endEpoch);
+        const currentBN = toBigNumber(currentEpoch);
+        epochDiff = endBN.minus(currentBN);
+
+        if (epochDiff.lte(0)) {
+            return 'Ended';
+        }
+
+        const hoursRemaining = epochDiff.toNumber();
+        const daysRemaining = Math.floor(hoursRemaining / 24);
+        const hoursRemainder = hoursRemaining % 24;
+
+        if (daysRemaining > 0) {
+            return `${daysRemaining}d ${hoursRemainder}h`;
+        }
+
+        return `${hoursRemainder}h`;
+    }
+
+    // Single-arg form: epochs as minutes-based duration
+    epochDiff = toBigNumber(endEpoch);
+    if (epochDiff.lte(0)) {
         return 'Now';
     }
 
-    const totalSeconds = epochs.multipliedBy(60).toNumber();
+    const totalSeconds = epochDiff.multipliedBy(60).toNumber();
     const days = Math.floor(totalSeconds / (60 * 60 * 24));
     const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
     const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
