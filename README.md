@@ -1,6 +1,6 @@
 # @bze/bze-ui-kit
 
-Shared utilities, hooks, query clients, and services for BZE ecosystem frontend apps.
+Shared hooks, utilities, query clients, services, UI components, and types for BZE ecosystem frontend apps.
 
 ## Installation
 
@@ -13,10 +13,10 @@ npm install @bze/bze-ui-kit
 The consuming app must have these installed (they are **not** bundled):
 
 ```sh
-npm install @bze/bzejs @cosmjs/stargate bignumber.js chain-registry \
+npm install @bze/bzejs @chakra-ui/react @cosmjs/stargate bignumber.js chain-registry \
   @chain-registry/types @chain-registry/utils @chain-registry/v2 \
   @interchain-kit/core @interchain-kit/react @interchainjs/encoding \
-  react react-dom
+  interchainjs next-themes react react-dom react-icons
 ```
 
 ## Usage
@@ -67,14 +67,15 @@ The library exports the `AssetsContext` and `AssetsContextType` but each app mus
 
 | Module | Description |
 |--------|-------------|
-| `types/` | TypeScript interfaces for assets, balances, markets, pools, staking, IBC, events, settings |
+| `types/` | TypeScript interfaces for assets, balances, markets, pools, staking, IBC, events, settings, burn, block |
 | `utils/` | Pure functions: amount math, denom helpers, formatting, address validation, staking APR, chart periods |
-| `constants/` | Chain config, RPC/REST endpoints, asset lists, keplr fallbacks, testnet definitions |
+| `constants/` | Chain config, RPC/REST endpoints, asset lists, keplr fallbacks, testnet, ecosystem navigation |
 | `storage/` | localStorage wrapper with TTL + app settings persistence |
 | `service/` | AmmRouter (Dijkstra swap routing), BlockchainEventManager (pub-sub), assets_factory, keplr suggest chain |
-| `query/` | REST clients for bank, staking, markets, liquidity pools, epochs, IBC, burner, rewards, aggregator, prices |
-| `hooks/` | React hooks: useAssets, useBalances, useMarkets, useLiquidityPools, usePrices, useEpochs, useSigningClient, useSettings, useFeeTokens, useAssetsValue, useConnectionType |
+| `query/` | REST clients for bank, staking, markets, liquidity pools, epochs, IBC, burner, raffle, block, module, rewards, aggregator, prices |
+| `hooks/` | React hooks: useAssets, useBalances, useMarkets, useLiquidityPools, useLiquidityPool, usePrices, useEpochs, useSigningClient, useSettings, useFeeTokens, useAssetsValue, useConnectionType, useToast, useSDKTx/useBZETx/useIBCTx |
 | `contexts/` | Base `AssetsContextType` interface + `AssetsContext` React context |
+| `components/` | Sidebar, WalletSidebarContent, SettingsSidebarContent, SettingsToggle, Toaster, HighlightText |
 
 ## Required environment variables
 
@@ -133,12 +134,11 @@ The library reads these `NEXT_PUBLIC_*` env vars at build time (inlined by Next.
 
 These are **not** in the library — each app keeps its own:
 
-- **useToast / useTx** — depend on app-specific Chakra UI toaster component
 - **useBlockchainListener** — different WebSocket event subscriptions per app
 - **useNavigation** — completely different route structures
-- **AssetsProvider** — each app composes the shared base with app-specific state
-- **Burner-only**: raffle queries, burn history hooks, block queries
-- **Dex-only**: locked liquidity hook, native staking data hook, rewards staking data hook
+- **AssetsProvider** (`contexts/assets_context.tsx`) — each app composes the shared base `AssetsContextType` with app-specific state
+- **Burner-only**: `useBurnerContext` (typed wrapper for extended context), `useBurningHistory`, `useNextBurning`, `useRaffles`
+- **Dex-only**: `useLockedLiquidity`, `useNativeStakingData`, `useRewardsStakingData`
 
 ## Development
 
