@@ -7,7 +7,25 @@ import {PrettyBalance} from "../types/balance";
 export function useAssetsValue() {
     const {assetsMap, usdPricesMap, balancesMap, isLoading: isLoadingPrices} = useAssetsContext()
 
-    const totalUsdValue = useMemo(() => {
+    /**
+     * Calculate total USD value of an array of PrettyBalance items.
+     */
+    const totalUsdValue = useCallback((prettyBalances: PrettyBalance[]) => {
+        let usdValue = BigNumber(0)
+        prettyBalances.map((denomBalance: PrettyBalance) => {
+            const assetPrice = usdPricesMap.get(denomBalance.denom)
+            if (assetPrice && assetPrice.gt(0)) {
+                usdValue = usdValue.plus(assetPrice.multipliedBy(denomBalance.amount))
+            }
+        })
+
+        return usdValue
+    }, [usdPricesMap])
+
+    /**
+     * Calculate total USD value of all wallet balances.
+     */
+    const walletTotalUsdValue = useMemo(() => {
         let total = toBigNumber(0)
         balancesMap.forEach((balance, denom) => {
             const price = usdPricesMap.get(denom)
@@ -48,6 +66,7 @@ export function useAssetsValue() {
 
     return {
         totalUsdValue,
+        walletTotalUsdValue,
         denomUsdValue,
         compareValues,
         isLoading: isLoadingPrices,
