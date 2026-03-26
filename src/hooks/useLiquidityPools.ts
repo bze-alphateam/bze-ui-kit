@@ -1,10 +1,11 @@
-import {useMemo} from "react";
+import {useCallback, useMemo} from "react";
 import {useAssetsContext} from "./useAssets";
 import {LiquidityPoolSDKType} from "@bze/bzejs/bze/tradebin/store";
-import {poolIdFromPoolDenom} from "../utils/liquidity_pool";
+import {createPoolId, poolIdFromPoolDenom} from "../utils/liquidity_pool";
+import {Asset} from "../types/asset";
 
 export function useLiquidityPools() {
-    const {poolsMap, poolsDataMap, updateLiquidityPools, isLoading} = useAssetsContext()
+    const {poolsMap, poolsDataMap, updateLiquidityPools, isLoading, assetsMap} = useAssetsContext()
 
     const pools = useMemo((): LiquidityPoolSDKType[] => {
         return Array.from(poolsMap.values())
@@ -15,6 +16,23 @@ export function useLiquidityPools() {
         return poolsMap.get(poolId);
     }
 
+    const getDenomsPool = useCallback((denomA: string, denomB: string) => {
+        const poolId = createPoolId(denomA, denomB)
+        return poolsMap.get(poolId)
+    }, [poolsMap])
+
+    const liquidAssets = useMemo(() => {
+        if (!assetsMap || assetsMap.size === 0) return [];
+
+        const result = new Map<string, Asset|undefined>();
+        pools.forEach(pool => {
+            result.set(pool.base, assetsMap.get(pool.base))
+            result.set(pool.quote, assetsMap.get(pool.quote))
+        })
+
+        return Array.from(result.values()).filter(asset => asset !== undefined)
+    }, [assetsMap, pools])
+
     return {
         pools,
         poolsMap,
@@ -22,6 +40,8 @@ export function useLiquidityPools() {
         isLoading,
         updateLiquidityPools,
         getPoolByLpDenom,
+        getDenomsPool,
+        liquidAssets,
     }
 }
 

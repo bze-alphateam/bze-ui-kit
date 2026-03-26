@@ -87,8 +87,7 @@ const useTx = (chainName: string, isCosmos: boolean, isIBC: boolean) => {
     const simulateFee = useCallback(async (messages: EncodeObject[], memo: string | undefined): Promise<StdFee> => {
         const gasPrice = 0.02;
         const nativeDenom = getChainNativeAssetDenom();
-        // @ts-expect-error is checked above
-        const gasEstimated = await signingClient.simulate(address, messages, memo);
+        const gasEstimated = await (signingClient as any).simulate(address, messages, memo);
 
         const gasAmount = BigNumber(gasEstimated).multipliedBy(1.5);
         const gasPayment = gasAmount.multipliedBy(gasPrice);
@@ -163,7 +162,7 @@ const useTx = (chainName: string, isCosmos: boolean, isIBC: boolean) => {
             try {
                 const fee = await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
-                const resp = await signingClient.signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
+                const resp = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
                 if (isDeliverTxSuccess(resp)) {
                     setProgressTrack("Transaction sent")
                     toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${resp.transactionHash}`)}, 'View in Explorer');
