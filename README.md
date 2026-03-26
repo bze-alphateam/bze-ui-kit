@@ -123,6 +123,18 @@ The library reads these `NEXT_PUBLIC_*` env vars at build time (inlined by Next.
 | `NEXT_PUBLIC_REST_URL_FLIX` | OmniFlix REST |
 | `NEXT_PUBLIC_REST_URL_ATOMONE` | AtomOne REST |
 
+### Ecosystem navigation
+
+Override links and labels for the "Other" dropdown in the navbar, or exclude apps entirely. Useful for testnet deployments.
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `NEXT_PUBLIC_ECOSYSTEM_EXCLUDED` | _(empty)_ | Comma-separated keys to hide from the dropdown (e.g. `staking,factory`). Valid keys: `website`, `staking`, `dex`, `burner`, `factory` |
+| `NEXT_PUBLIC_ECOSYSTEM_LINK_{KEY}` | _(per app)_ | Override the URL for an app. Key is uppercased (e.g. `NEXT_PUBLIC_ECOSYSTEM_LINK_WEBSITE=https://testnet.getbze.com`) |
+| `NEXT_PUBLIC_ECOSYSTEM_LABEL_{KEY}` | _(per app)_ | Override the display label (e.g. `NEXT_PUBLIC_ECOSYSTEM_LABEL_DEX=TestDEX`) |
+
+Call `getEcosystemApps()` to get the filtered and overridden list. Each app should exclude itself via `NEXT_PUBLIC_ECOSYSTEM_EXCLUDED`.
+
 ### AtomOne validator (dex-only)
 
 | Env var | Default | Description |
