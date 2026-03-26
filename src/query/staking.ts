@@ -3,8 +3,9 @@ import {PageRequest} from "@bze/bzejs/cosmos/base/query/v1beta1/pagination";
 import BigNumber from "bignumber.js";
 import {Balance} from "../types/balance";
 import {getChainNativeAssetDenom} from "../constants/assets";
-import {UnbondingDelegationSDKType} from "@bze/bzejs/cosmos/staking/v1beta1/staking";
+import {BondStatus, UnbondingDelegationSDKType, ValidatorSDKType} from "@bze/bzejs/cosmos/staking/v1beta1/staking";
 import {NativeUnbondingSummary, UserNativeStakingRewards} from "../types/staking";
+import {DelegationResponseSDKType} from "@bze/bzejs/cosmos/staking/v1beta1/staking";
 
 export const getAddressDelegations = async (address: string) => {
     try {
@@ -183,5 +184,70 @@ export const getStakingPool = async () => {
             not_bonded_tokens: "0",
             bonded_tokens: "0",
         }
+    }
+}
+
+export const getValidators = async (status: BondStatus = BondStatus.BOND_STATUS_BONDED): Promise<ValidatorSDKType[]> => {
+    try {
+        const client = await getRestClient();
+        const statusStr = status === BondStatus.BOND_STATUS_BONDED ? "BOND_STATUS_BONDED" :
+            status === BondStatus.BOND_STATUS_UNBONDING ? "BOND_STATUS_UNBONDING" :
+            status === BondStatus.BOND_STATUS_UNBONDED ? "BOND_STATUS_UNBONDED" : "";
+        const resp = await client.cosmos.staking.v1beta1.validators({
+            status: statusStr,
+            pagination: PageRequest.fromPartial({
+                limit: BigInt(500)
+            })
+        });
+        return resp.validators;
+    } catch (e) {
+        console.error("failed to get validators", e);
+        return [];
+    }
+}
+
+export const getDelegatorValidators = async (address: string): Promise<ValidatorSDKType[]> => {
+    try {
+        const client = await getRestClient();
+        const resp = await client.cosmos.staking.v1beta1.delegatorValidators({
+            delegatorAddr: address,
+            pagination: PageRequest.fromPartial({
+                limit: BigInt(500)
+            })
+        });
+        return resp.validators;
+    } catch (e) {
+        console.error("failed to get delegator validators", e);
+        return [];
+    }
+}
+
+export const getDelegatorDelegations = async (address: string): Promise<DelegationResponseSDKType[]> => {
+    try {
+        const client = await getRestClient();
+        const resp = await client.cosmos.staking.v1beta1.delegatorDelegations({
+            delegatorAddr: address,
+            pagination: PageRequest.fromPartial({
+                limit: BigInt(1000)
+            })
+        });
+        return resp.delegation_responses;
+    } catch (e) {
+        console.error("failed to get delegator delegations", e);
+        return [];
+    }
+}
+
+export const getValidatorDelegatorRewards = async (address: string, validatorAddress: string) => {
+    try {
+        const client = await getRestClient();
+        const resp = await client.cosmos.distribution.v1beta1.delegationRewards({
+            delegatorAddress: address,
+            validatorAddress: validatorAddress,
+        });
+        return resp.rewards;
+    } catch (e) {
+        console.error("failed to get validator delegator rewards", e);
+        return [];
     }
 }

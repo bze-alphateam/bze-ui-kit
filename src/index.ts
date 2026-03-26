@@ -143,7 +143,8 @@ export {
     getAddressDelegations, getAddressNativeDelegatedBalance,
     getAddressUnbondingDelegations, getAddressUnbondingDelegationsSummary,
     getAddressRewards, getAddressNativeTotalRewards,
-    getAnnualProvisions, getDistributionParams, getStakingParams, getStakingPool
+    getAnnualProvisions, getDistributionParams, getStakingParams, getStakingPool,
+    getValidators, getDelegatorValidators, getDelegatorDelegations, getValidatorDelegatorRewards
 } from './query/staking';
 export {
     getAllTickers, getMarketOrdersHistory, getAddressHistory,
