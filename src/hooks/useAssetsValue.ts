@@ -1,10 +1,11 @@
-import {useMemo} from "react";
+import {useCallback, useMemo} from "react";
 import {useAssetsContext} from "./useAssets";
 import {toBigNumber, uAmountToBigNumberAmount} from "../utils/amount";
 import BigNumber from "bignumber.js";
+import {PrettyBalance} from "../types/balance";
 
 export function useAssetsValue() {
-    const {assetsMap, usdPricesMap, balancesMap, isLoading} = useAssetsContext()
+    const {assetsMap, usdPricesMap, balancesMap, isLoading: isLoadingPrices} = useAssetsContext()
 
     const totalUsdValue = useMemo(() => {
         let total = toBigNumber(0)
@@ -20,7 +21,7 @@ export function useAssetsValue() {
         return total
     }, [balancesMap, usdPricesMap, assetsMap])
 
-    const denomUsdValue = (denom: string, uAmount: BigNumber): BigNumber => {
+    const denomUsdValue = useCallback((denom: string, uAmount: BigNumber): BigNumber => {
         const price = usdPricesMap.get(denom)
         if (!price || !price.gt(0)) return toBigNumber(0)
 
@@ -28,11 +29,27 @@ export function useAssetsValue() {
         if (!asset) return toBigNumber(0)
 
         return price.multipliedBy(uAmountToBigNumberAmount(uAmount, asset.decimals))
-    }
+    }, [usdPricesMap, assetsMap])
+
+    const compareValues = useCallback((a: PrettyBalance, b: PrettyBalance) => {
+        let aValue = BigNumber(0)
+        const aPrice = usdPricesMap.get(a.denom)
+        if (aPrice) {
+            aValue = aPrice.multipliedBy(a.amount)
+        }
+        let bValue = BigNumber(0)
+        const bPrice = usdPricesMap.get(b.denom)
+        if (bPrice) {
+            bValue = bPrice.multipliedBy(b.amount)
+        }
+
+        return aValue.comparedTo(bValue) ?? 0
+    }, [usdPricesMap])
 
     return {
         totalUsdValue,
         denomUsdValue,
-        isLoading,
+        compareValues,
+        isLoading: isLoadingPrices,
     }
 }

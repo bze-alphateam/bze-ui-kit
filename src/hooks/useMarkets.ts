@@ -1,8 +1,8 @@
 import {useCallback, useMemo} from "react";
 import {useAssetsContext} from "./useAssets";
-import {Market} from "../types/market";
-import {createMarketId} from "../utils/market";
+import {Market, MarketData} from "../types/market";
 import {toBigNumber, uAmountToBigNumberAmount} from "../utils/amount";
+import {truncateDenom} from "../utils/denom";
 import BigNumber from "bignumber.js";
 
 export function useMarkets() {
@@ -12,56 +12,126 @@ export function useMarkets() {
         return Array.from(marketsMap.values())
     }, [marketsMap])
 
+    const marketsData = useMemo(() => Array.from(marketsDataMap.values()), [marketsDataMap])
+
+    const marketExists = useCallback((marketId: string): boolean => marketsMap.has(marketId), [marketsMap])
+
+    const getMarketData = useCallback((marketId: string): MarketData | undefined => marketsDataMap.get(marketId), [marketsDataMap])
+    const getMarket = useCallback((marketId: string): Market | undefined => marketsMap.get(marketId), [marketsMap])
+
     return {
         markets,
+        marketsData,
         marketsMap,
         marketsDataMap,
         isLoading,
         updateMarkets,
+        marketExists,
+        getMarketData,
+        getMarket,
     }
 }
 
 export function useAssetMarkets(denom: string) {
-    const {marketsMap} = useAssetsContext()
+    const { isLoading, marketsMap, marketsDataMap } = useAssetsContext()
 
-    const assetMarkets = useMemo(() => {
-        return Array.from(marketsMap.values()).filter(market =>
-            market.base === denom || market.quote === denom
-        )
-    }, [marketsMap, denom])
+    const markets = useMemo(() => Array.from(marketsMap.values()), [marketsMap])
+    const marketsData = useMemo(() => Array.from(marketsDataMap.values()), [marketsDataMap])
+
+    const assetMarkets = useMemo((): Market[] => {
+        const baseMatches = []
+        const quoteMatches = []
+
+        for (const market of markets) {
+            if (market.base === denom) baseMatches.push(market)
+            else if (market.quote === denom) quoteMatches.push(market)
+        }
+
+        return [...baseMatches, ...quoteMatches]
+    }, [markets, denom])
+
+    const assetMarketsData = useMemo((): MarketData[] => {
+        const baseMatches = []
+        const quoteMatches = []
+
+        for (const market of marketsData) {
+            if (market.base === denom) baseMatches.push(market)
+            else if (market.quote === denom) quoteMatches.push(market)
+        }
+
+        return [...baseMatches, ...quoteMatches]
+    }, [marketsData, denom])
+
+    const asset24hTradedVolume = useMemo((): BigNumber => {
+        return assetMarketsData.reduce((acc, market) => {
+            if (denom === market.base) {
+                return acc.plus(market.base_volume || 0)
+            } else if (denom === market.quote) {
+                return acc.plus(market.quote_volume || 0)
+            }
+            return acc
+        }, new BigNumber(0))
+    }, [assetMarketsData, denom])
 
     return {
+        isLoading,
         assetMarkets,
+        assetMarketsData,
+        asset24hTradedVolume,
     }
 }
 
-export function useMarket(base: string, quote: string) {
-    const {marketsMap, marketsDataMap, assetsMap, isLoading} = useAssetsContext()
+/**
+ * Hook to get a market by its ID string.
+ */
+export function useMarket(marketId: string) {
+    const { marketsMap, marketsDataMap, isLoading, assetsMap } = useAssetsContext()
 
-    const marketId = useMemo(() => createMarketId(base, quote), [base, quote]);
+    const market = useMemo(() => marketsMap.get(marketId), [marketsMap, marketId])
 
-    const market = useMemo(() => {
-        return marketsMap.get(marketId)
-    }, [marketsMap, marketId])
+    const marketSymbol = useMemo((): string => {
+        if (isLoading) return ""
+        if (!market) return ""
 
-    const marketData = useMemo(() => {
-        return marketsDataMap.get(marketId)
-    }, [marketsDataMap, marketId])
+        let base = assetsMap.get(market.base)?.ticker
+        if (!base) {
+            base = truncateDenom(market.base)
+        }
 
-    const marketExists = useMemo(() => !!market, [market]);
+        let quote = assetsMap.get(market.quote)?.ticker
+        if (!quote) {
+            quote = truncateDenom(market.quote)
+        }
+
+        return `${base}/${quote}`
+    }, [market, isLoading, assetsMap])
+
+    const marketData = useMemo(() => marketsDataMap.get(marketId), [marketsDataMap, marketId])
+
+    const marketExists = useMemo(() => !!market, [market])
 
     const volume24h = useMemo(() => {
-        if (!marketData) return toBigNumber(0);
-        const quoteAsset = assetsMap.get(quote);
+        if (!marketData || !market) return toBigNumber(0);
+        const quoteAsset = assetsMap.get(market.quote);
         if (!quoteAsset) return toBigNumber(0);
         return uAmountToBigNumberAmount(toBigNumber(marketData.quote_volume), quoteAsset.decimals);
-    }, [marketData, assetsMap, quote]);
+    }, [marketData, assetsMap, market])
 
     return {
+        isLoading,
         market,
         marketData,
+        marketSymbol,
+        marketId,
         marketExists,
         volume24h,
-        isLoading,
     }
+}
+
+export function useMarketsManager() {
+    const { updateMarkets, isLoading } = useAssetsContext();
+    return {
+        updateMarkets,
+        isLoading
+    };
 }
