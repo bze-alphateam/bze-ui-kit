@@ -39,6 +39,27 @@ const getExcludedKeys = (): Set<string> => {
 };
 
 /**
+ * Static env var lookups — Next.js only inlines process.env.NEXT_PUBLIC_*
+ * when the full string is written statically. Dynamic access like
+ * process.env[`NEXT_PUBLIC_ECOSYSTEM_LINK_${key}`] does NOT get replaced.
+ */
+const LINK_OVERRIDES: Record<string, string | undefined> = {
+    website: process.env.NEXT_PUBLIC_ECOSYSTEM_LINK_WEBSITE,
+    staking: process.env.NEXT_PUBLIC_ECOSYSTEM_LINK_STAKING,
+    dex:     process.env.NEXT_PUBLIC_ECOSYSTEM_LINK_DEX,
+    burner:  process.env.NEXT_PUBLIC_ECOSYSTEM_LINK_BURNER,
+    factory: process.env.NEXT_PUBLIC_ECOSYSTEM_LINK_FACTORY,
+};
+
+const LABEL_OVERRIDES: Record<string, string | undefined> = {
+    website: process.env.NEXT_PUBLIC_ECOSYSTEM_LABEL_WEBSITE,
+    staking: process.env.NEXT_PUBLIC_ECOSYSTEM_LABEL_STAKING,
+    dex:     process.env.NEXT_PUBLIC_ECOSYSTEM_LABEL_DEX,
+    burner:  process.env.NEXT_PUBLIC_ECOSYSTEM_LABEL_BURNER,
+    factory: process.env.NEXT_PUBLIC_ECOSYSTEM_LABEL_FACTORY,
+};
+
+/**
  * Returns the list of ecosystem apps with env var overrides applied and exclusions removed.
  *
  * Env vars:
@@ -52,9 +73,8 @@ export const getEcosystemApps = (): EcosystemApp[] => {
     return DEFAULT_APPS
         .filter(app => !excluded.has(app.key))
         .map(app => {
-            const envKey = app.key.toUpperCase();
-            const linkOverride = process.env[`NEXT_PUBLIC_ECOSYSTEM_LINK_${envKey}`];
-            const labelOverride = process.env[`NEXT_PUBLIC_ECOSYSTEM_LABEL_${envKey}`];
+            const linkOverride = LINK_OVERRIDES[app.key];
+            const labelOverride = LABEL_OVERRIDES[app.key];
 
             return {
                 key: app.key,
