@@ -55,6 +55,7 @@ export {
     formatDate, formatTimeRemaining, formatTimeRemainingFromEpochs
 } from './utils/formatter';
 export { sleep, openExternalLink } from './utils/functions';
+export { coins, parseCoins } from './utils/coins';
 export { canDepositFromIBC, canSendToIBC, denomOnFirstHopChainFromTrace, getIbcTransferTimeout } from './utils/ibc';
 export {
     calculateUserPoolData, calculatePoolOppositeAmount, calculatePoolPrice,
