@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useChain} from "@interchain-kit/react";
 import {getChainName} from "../constants/chain";
+import {registerBzeEncoders} from "../utils/signing_client_setup";
 
 interface UseSigningClientProps {
     chainName?: string;
@@ -28,6 +29,7 @@ export const useSigningClient = ({chainName}: UseSigningClientProps): {
         const load = async () => {
             const client = await createSigningClient();
             if (client) {
+                registerBzeEncoders(client);
                 setSigningClient(client);
                 setIsSigningClientReady(true);
                 hasInitialized.current = true;

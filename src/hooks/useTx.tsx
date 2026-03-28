@@ -176,10 +176,13 @@ const useTx = (chainName: string) => {
             try {
                 const fee = await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
-                const resp = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
-                if (resp.code === 0) {
+                const broadcastResult = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
+                setProgressTrack("Waiting for confirmation")
+                const resp = await broadcastResult.wait();
+                const txHash = resp?.txhash || broadcastResult.transactionHash;
+                if (resp?.code === 0) {
                     setProgressTrack("Transaction sent")
-                    toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${resp.transactionHash}`)}, 'View in Explorer');
+                    toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${txHash}`)}, 'View in Explorer');
 
                     if (options?.onSuccess) {
                         options.onSuccess(resp)
