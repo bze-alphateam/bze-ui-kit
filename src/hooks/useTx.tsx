@@ -1,4 +1,5 @@
 import {DeliverTxResponse, EncodeObject, StdFee} from "@bze/bzejs/types";
+import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
 import {useChain} from "@interchain-kit/react";
 import {getChainExplorerURL, getChainName} from "../constants/chain";
 import {useToast} from "./useToast";
@@ -13,8 +14,7 @@ import {useLiquidityPools} from "./useLiquidityPools";
 import {useSettings} from "./useSettings";
 import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
 import {toBigNumber} from "../utils/amount";
-
-const coins = (amount: number | string, denom: string) => [{amount: String(amount), denom}];
+import {coins} from "../utils/coins";
 
 export interface TxOptions {
     fee?: StdFee | null;
@@ -88,7 +88,20 @@ const useTx = (chainName: string) => {
     const simulateFee = useCallback(async (messages: EncodeObject[], memo: string | undefined): Promise<StdFee> => {
         const gasPrice = 0.02;
         const nativeDenom = getChainNativeAssetDenom();
-        const gasEstimated = await (signingClient as any).simulate(address, messages, memo);
+        const signer = signingClient as any;
+
+        // Encode messages into TxBody using the signer's own encoders (same as interchainjs does internally)
+        const encodedMessages = messages.map(({typeUrl, value}) => {
+            const encoder = signer.getEncoder(typeUrl);
+            const encodedWriter = encoder.encode(value);
+            const encodedValue = typeof encodedWriter?.finish === 'function' ? encodedWriter.finish() : encodedWriter;
+            return {typeUrl, value: encodedValue};
+        });
+        const txBody = TxBody.fromPartial({messages: encodedMessages, memo: memo ?? ''});
+        const signerInfo = SignerInfo.fromPartial({modeInfo: {single: {mode: 1}}, sequence: BigInt(0)});
+
+        const {gasInfo} = await signer.simulateByTxBody(txBody, [signerInfo]);
+        const gasEstimated = Number(gasInfo?.gasUsed ?? BigInt(0));
 
         const gasAmount = BigNumber(gasEstimated).multipliedBy(1.5);
         const gasPayment = gasAmount.multipliedBy(gasPrice);
