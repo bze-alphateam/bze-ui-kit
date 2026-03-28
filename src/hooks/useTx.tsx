@@ -1,10 +1,9 @@
-import {coins, DeliverTxResponse, isDeliverTxSuccess} from '@cosmjs/stargate';
+import {DeliverTxResponse, EncodeObject, StdFee} from "@bze/bzejs/types";
 import {useChain} from "@interchain-kit/react";
 import {getChainExplorerURL, getChainName} from "../constants/chain";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
 import {getChainNativeAssetDenom} from "../constants/assets";
-import {EncodeObject, StdFee} from "interchainjs/types";
 import {useSigningClient} from "./useSigningClient";
 import {openExternalLink, sleep} from "../utils/functions";
 import BigNumber from "bignumber.js";
@@ -14,6 +13,8 @@ import {useLiquidityPools} from "./useLiquidityPools";
 import {useSettings} from "./useSettings";
 import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
 import {toBigNumber} from "../utils/amount";
+
+const coins = (amount: number | string, denom: string) => [{amount: String(amount), denom}];
 
 export interface TxOptions {
     fee?: StdFee | null;
@@ -36,7 +37,7 @@ const defaultFee = {
 }
 
 export const useSDKTx = (chainName?: string) => {
-    const {tx, progressTrack} = useTx(chainName ?? getChainName(), true, false);
+    const {tx, progressTrack} = useTx(chainName ?? getChainName());
 
     return {
         tx,
@@ -45,7 +46,7 @@ export const useSDKTx = (chainName?: string) => {
 }
 
 export const useBZETx = () => {
-    const {tx, progressTrack} = useTx(getChainName(), false, false);
+    const {tx, progressTrack} = useTx(getChainName());
 
     return {
         tx,
@@ -54,7 +55,7 @@ export const useBZETx = () => {
 }
 
 export const useIBCTx = (chainName?: string) => {
-    const {tx, progressTrack} = useTx(chainName ?? getChainName(), false, true);
+    const {tx, progressTrack} = useTx(chainName ?? getChainName());
 
     return {
         tx,
@@ -62,10 +63,10 @@ export const useIBCTx = (chainName?: string) => {
     }
 }
 
-const useTx = (chainName: string, isCosmos: boolean, isIBC: boolean) => {
+const useTx = (chainName: string) => {
     const {address, disconnect} = useChain(chainName);
     const {toast} = useToast();
-    const {signingClient, isSigningClientReady, signingClientError} = useSigningClient({chainName: chainName, isCosmos: isCosmos, isIbc: isIBC});
+    const {signingClient, isSigningClientReady, signingClientError} = useSigningClient({chainName: chainName});
     const [progressTrack, setProgressTrack] = useState("")
     const {getDenomsPool} = useLiquidityPools()
     const {feeDenom} = useSettings()
@@ -163,7 +164,7 @@ const useTx = (chainName: string, isCosmos: boolean, isIBC: boolean) => {
                 const fee = await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
                 const resp = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
-                if (isDeliverTxSuccess(resp)) {
+                if (resp.code === 0) {
                     setProgressTrack("Transaction sent")
                     toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${resp.transactionHash}`)}, 'View in Explorer');
 
