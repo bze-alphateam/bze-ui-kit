@@ -3,7 +3,7 @@ import { chains as testnetChains } from "chain-registry/testnet";
 import {getAssetLists as ibcAssetsList} from "@chain-registry/utils";
 import {BZE_TESTNET_2_SUGGEST_CHAIN, BZE_TESTNET_NETWORK} from "./testnet";
 import {Chain} from "@chain-registry/types";
-import {assetLists, chains, ibcData} from "@chain-registry/v2";
+import {assetLists, chains, ibcData} from "chain-registry";
 
 export const getChainId = (): string => {
     return process.env.NEXT_PUBLIC_CHAIN_ID || 'beezee-1'

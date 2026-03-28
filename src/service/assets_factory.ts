@@ -12,7 +12,7 @@ import {
 } from "../constants/chain";
 import {getExponentByDenomFromAsset} from "@chain-registry/utils";
 import {counterpartyChainForChannel, getHashIBCTrace} from "../query/ibc";
-import {Asset as ChainRegistryAsset} from "@chain-registry/v2-types";
+import {Asset as ChainRegistryAsset} from "@chain-registry/types";
 import {denomOnFirstHopChainFromTrace} from "../utils/ibc";
 
 const ORIGIN_CHAIN_PLACEHOLDER = "Unknown chain"
