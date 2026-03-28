@@ -17,6 +17,10 @@ import {denomOnFirstHopChainFromTrace} from "../utils/ibc";
 
 const ORIGIN_CHAIN_PLACEHOLDER = "Unknown chain"
 
+const getAssetLogo = (asset: ChainRegistryAsset): string => {
+    return asset.logoURIs?.svg ?? asset.logoURIs?.png ?? asset.images?.[0]?.svg ?? asset.images?.[0]?.png ?? TOKEN_LOGO_PLACEHOLDER
+}
+
 export const getChainAssets = async (): Promise<ChainAssets> => {
     const [metadata, supply] = await Promise.all([getAllMetadataMap(), getAllSupply()])
     const result = {
@@ -85,7 +89,7 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
                 asset.name = ibcData.name
                 asset.ticker = ibcData.symbol.toUpperCase()
                 asset.decimals = getExponentByDenomFromAsset(ibcData, ibcData.display) ?? 0
-                asset.logo = ibcData.logoURIs?.svg ?? ibcData.logoURIs?.png ?? TOKEN_LOGO_PLACEHOLDER
+                asset.logo = getAssetLogo(ibcData as unknown as ChainRegistryAsset)
                 asset.verified = true
                 asset.IBCData = {
                     chain: {
@@ -151,7 +155,7 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
         asset.name = registryAsset.name
         asset.ticker = registryAsset.symbol.toUpperCase()
         asset.decimals = getExponentByDenomFromAsset(registryAsset, registryAsset.display) ?? 0
-        asset.logo = registryAsset.logoURIs?.svg ?? registryAsset.logoURIs?.png ?? TOKEN_LOGO_PLACEHOLDER
+        asset.logo = getAssetLogo(registryAsset)
         asset.verified = true
 
         return asset;
@@ -203,7 +207,7 @@ const populateAssetFromBZEChainRegistryAssetList = async (asset: Asset): Promise
     asset.decimals = getExponentByDenomFromAsset(assetData, assetData.display) ?? 0
     asset.name = assetData.name
     asset.ticker = assetData.display.toUpperCase()
-    asset.logo = isNativeDenom(asset.denom) ? BZE_CIRCLE_LOGO : assetData.logoURIs?.svg ?? assetData.logoURIs?.png ?? TOKEN_LOGO_PLACEHOLDER
+    asset.logo = isNativeDenom(asset.denom) ? BZE_CIRCLE_LOGO : getAssetLogo(assetData as unknown as ChainRegistryAsset)
 
     return asset
 }
