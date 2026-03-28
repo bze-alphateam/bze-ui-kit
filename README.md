@@ -14,7 +14,7 @@ The consuming app must have these installed (they are **not** bundled):
 
 ```sh
 npm install @bze/bzejs @chakra-ui/react @cosmjs/stargate bignumber.js chain-registry \
-  @chain-registry/types @chain-registry/utils @chain-registry/v2 \
+  @chain-registry/types @chain-registry/utils \
   @interchain-kit/core @interchain-kit/react @interchainjs/encoding \
   interchainjs next-themes react react-dom react-icons
 ```
