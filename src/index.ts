@@ -49,7 +49,12 @@ export {
     isFactoryDenom, isIbcDenom, isLpDenom, isNativeDenom,
     getDenomType, truncateDenom, isIbcAsset
 } from './utils/denom';
-export { getMarketOrderBookChangedEvent, getMarketEventKey, mapEventAttributes } from './utils/events';
+export {
+    getMarketOrderBookChangedEvent, getMarketEventKey, mapEventAttributes,
+    getEventKeyValue, getEventMarketId,
+    isAddressTransfer, isOrderBookEvent, isOrderExecutedEvent, isSwapEvent,
+    isCoinbaseEvent, isBurnEvent, isEpochStartEvent, getMintedAmount,
+} from './utils/events';
 export {
     formatUsdAmount, shortNumberFormat, intlDateFormat,
     formatDate, formatTimeRemaining, formatTimeRemainingFromEpochs
