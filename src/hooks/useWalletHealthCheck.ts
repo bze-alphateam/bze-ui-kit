@@ -2,6 +2,7 @@ import {useEffect} from "react";
 import {useChain} from "@interchain-kit/react";
 import {WalletState} from "@interchain-kit/core";
 import {getChainName} from "../constants/chain";
+import {toaster} from "../components/toaster";
 
 const SIGNING_CLIENT_TIMEOUT_MS = 5_000;
 
@@ -21,7 +22,7 @@ const SIGNING_CLIENT_TIMEOUT_MS = 5_000;
  * interfere with normal connect/disconnect flows initiated by the user.
  */
 export const useWalletHealthCheck = (chainName?: string) => {
-    const {status, getSigningClient, disconnect} = useChain(chainName ?? getChainName());
+    const {status, getSigningClient, disconnect, address} = useChain(chainName ?? getChainName());
 
     useEffect(() => {
         // Not connected at mount — nothing stale to validate
@@ -37,11 +38,47 @@ export const useWalletHealthCheck = (chainName?: string) => {
                 ]);
 
                 if (!client) {
-                    // Extension locked, unavailable, or timed out
+                    const msg = "[useWalletHealthCheck] Signing client unavailable or timed out — wallet may be locked. Disconnecting.";
+                    console.error(msg);
+                    toaster.create({
+                        title: "Wallet disconnected",
+                        description: "Could not reach your wallet extension. Please reconnect.",
+                        type: "error",
+                        duration: 8000,
+                        closable: true,
+                    });
+                    disconnect();
+                    return;
+                }
+
+                // Detect the case where the user switched wallet accounts OUTSIDE
+                // the UI (close tab → switch account in extension → reopen tab).
+                // interchain-kit restores the old address from localStorage but
+                // the extension's signer belongs to the new account — any attempt
+                // to broadcast would fail with "signers mismatch".
+                const accounts = await (client as any).getAccounts?.();
+                if (accounts?.length > 0 && accounts[0].address !== address) {
+                    const msg = `[useWalletHealthCheck] Address mismatch — interchain-kit cached "${address}" but signing client reports "${accounts[0].address}". Wallet was likely switched outside the UI. Disconnecting.`;
+                    console.error(msg);
+                    toaster.create({
+                        title: "Wallet account changed",
+                        description: "Your wallet account changed since your last visit. Please reconnect.",
+                        type: "warning",
+                        duration: 8000,
+                        closable: true,
+                    });
                     disconnect();
                 }
-            } catch {
+            } catch (err) {
                 // Extension threw — treat as unavailable
+                console.error("[useWalletHealthCheck] Error validating wallet connection:", err);
+                toaster.create({
+                    title: "Wallet connection error",
+                    description: "Could not verify your wallet connection. Please reconnect.",
+                    type: "error",
+                    duration: 8000,
+                    closable: true,
+                });
                 disconnect();
             }
         };
