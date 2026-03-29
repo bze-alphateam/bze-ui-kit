@@ -96,3 +96,8 @@ export const getChainExplorerURL = (chainName: string): string => {
 export const getLockerAddress = (): string => {
     return process.env.NEXT_PUBLIC_LOCKER_ADDRESS || 'bze1pc5zjcvhx3e8l305zjl72grytfa30r5mdypmw4'
 }
+
+export const getGasMultiplier = (): number => {
+    const val = parseFloat(process.env.NEXT_PUBLIC_GAS_MULTIPLIER || '');
+    return isNaN(val) || val <= 0 ? 1.5 : val;
+}

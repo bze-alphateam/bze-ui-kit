@@ -1,13 +1,11 @@
 import {DeliverTxResponse, EncodeObject, StdFee} from "@bze/bzejs/types";
-import {Tx, TxBody, AuthInfo, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
-import {toBase64} from "@interchainjs/encoding";
+import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
 import {useChain} from "@interchain-kit/react";
-import {getChainExplorerURL, getChainName} from "../constants/chain";
+import {getChainExplorerURL, getChainName, getGasMultiplier} from "../constants/chain";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
 import {getChainNativeAssetDenom} from "../constants/assets";
 import {useSigningClient} from "./useSigningClient";
-import {getSettings} from "../storage/settings";
 import {openExternalLink, sleep} from "../utils/functions";
 import BigNumber from "bignumber.js";
 import {DEFAULT_TX_MEMO} from "../constants/placeholders";
@@ -99,30 +97,16 @@ const useTx = (chainName: string) => {
             return {typeUrl, value: encodedValue};
         });
         const txBody = TxBody.fromPartial({messages: encodedMessages, memo: memo ?? ''});
-        const authInfo = AuthInfo.fromPartial({
-            signerInfos: [SignerInfo.fromPartial({modeInfo: {single: {mode: 1}}, sequence: BigInt(0)})],
-            fee: {amount: [], gasLimit: BigInt(0), payer: '', granter: ''},
-        });
-        const tx = Tx.fromPartial({body: txBody, authInfo, signatures: [new Uint8Array(0)]});
-        const txBytes = Tx.encode(tx).finish();
-
-        // Use REST endpoint for simulation — same approach as cosmjs, avoids ABCI routing issues
-        const restEndpoint = getSettings().endpoints.restEndpoint.replace(/\/$/, '');
-        const simResponse = await fetch(`${restEndpoint}/cosmos/tx/v1beta1/simulate`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({tx_bytes: toBase64(txBytes)}),
-        });
-        if (!simResponse.ok) {
-            throw new Error(`Simulation request failed with status ${simResponse.status}`);
-        }
-        const simData = await simResponse.json();
-        const gasEstimated = Number(simData?.gas_info?.gas_used ?? 0);
+        // BZE ante handler checks sequence even in simulation — use the real sequence
+        const sequence = await signer.getSequence(address);
+        const signerInfo = SignerInfo.fromPartial({modeInfo: {single: {mode: 1}}, sequence});
+        const {gasInfo} = await signer.simulateByTxBody(txBody, [signerInfo]);
+        const gasEstimated = Number(gasInfo?.gasUsed ?? BigInt(0));
         if (gasEstimated === 0) {
             throw new Error("Gas simulation returned 0");
         }
 
-        const gasAmount = BigNumber(gasEstimated).multipliedBy(1.5);
+        const gasAmount = BigNumber(gasEstimated).multipliedBy(getGasMultiplier());
         const gasPayment = gasAmount.multipliedBy(gasPrice);
         const nativeFee = {
             amount: coins(gasPayment.toFixed(0).toString(), nativeDenom),

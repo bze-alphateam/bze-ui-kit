@@ -1,6 +1,6 @@
 {
   "name": "@bze/bze-ui-kit",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Shared utilities, hooks, query clients, and services for BZE ecosystem apps",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -28,6 +28,7 @@
     "@chakra-ui/react": "^3.0.0",
     "@interchain-kit/core": "0.10.1",
     "@interchain-kit/react": "0.10.1",
+    "@interchainjs/cosmos": "1.20.0",
     "@interchainjs/encoding": "1.20.0",
     "bignumber.js": "^9.0.0",
     "chain-registry": "2.0.178",
@@ -43,6 +44,7 @@
     "@chakra-ui/react": "^3.22.0",
     "@interchain-kit/core": "0.10.1",
     "@interchain-kit/react": "0.10.1",
+    "@interchainjs/cosmos": "1.20.0",
     "@interchainjs/encoding": "1.20.0",
     "@types/react": "^19",
     "bignumber.js": "^9.3.1",
