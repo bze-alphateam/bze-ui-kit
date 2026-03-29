@@ -178,7 +178,7 @@ export { useFeeTokens } from './hooks/useFeeTokens';
 export { useMarkets, useAssetMarkets, useMarket, useMarketsManager } from './hooks/useMarkets';
 export { useToast } from './hooks/useToast';
 export { useSDKTx, useBZETx, useIBCTx, TxStatus } from './hooks/useTx';
-export type { TxOptions } from './hooks/useTx';
+export type { TxOptions, TxSuccessResponse } from './hooks/useTx';
 export { useValidatorLogos } from './hooks/useValidatorLogos';
 
 // === Components ===

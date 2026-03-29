@@ -16,9 +16,19 @@ import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
 import {toBigNumber} from "../utils/amount";
 import {coins} from "../utils/coins";
 
+// The actual payload delivered to onSuccess — the result of broadcastResult.wait(),
+// which is a TxResponse from @interchainjs/cosmos containing the inclusion details.
+export interface TxSuccessResponse {
+    height: number;
+    txhash: string;
+    code: number;
+    rawLog?: string;
+    [key: string]: unknown;
+}
+
 export interface TxOptions {
     fee?: StdFee | null;
-    onSuccess?: (res: DeliverTxResponse) => void;
+    onSuccess?: (res: TxSuccessResponse) => void;
     onFailure?: (err: string) => void;
     memo?: string;
     progressTrackerTimeout?: number;
@@ -183,7 +193,7 @@ const useTx = (chainName: string) => {
                     toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${txHash}`)}, 'View in Explorer');
 
                     if (options?.onSuccess) {
-                        options.onSuccess(resp)
+                        options.onSuccess(resp as TxSuccessResponse)
                     }
                 } else {
                     setProgressTrack("Transaction failed")
