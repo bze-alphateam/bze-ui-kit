@@ -15,16 +15,28 @@ export const useSigningClient = ({chainName}: UseSigningClientProps): {
     const {getSigningClient, signingClientError, wallet, chain} = useChain(chainName ?? getChainName());
     const [signingClient, setSigningClient] = useState<Awaited<ReturnType<typeof getSigningClient>>|null>(null);
     const [isSigningClientReady, setIsSigningClientReady] = useState(false);
-    const hasInitialized = useRef(false);
+    // Track which wallet instance was used to create the current client so we
+    // recreate it when the user switches wallets (instead of a plain boolean
+    // that permanently blocks re-initialization after the first load).
+    const initializedForWallet = useRef<typeof wallet | null>(null);
 
     const createSigningClient = useCallback(async () => {
         return getSigningClient();
     }, [getSigningClient]);
 
     useEffect(() => {
-        if (!wallet || !chain || hasInitialized.current) {
-            return
+        if (!wallet || !chain) {
+            // Wallet disconnected (or switching) — clear stale client so the
+            // next wallet gets a fresh one and the UI reflects disconnected state.
+            if (initializedForWallet.current !== null) {
+                setSigningClient(null);
+                setIsSigningClientReady(false);
+                initializedForWallet.current = null;
+            }
+            return;
         }
+        // Same wallet object — client is already up-to-date, nothing to do.
+        if (initializedForWallet.current === wallet) return;
 
         const load = async () => {
             const client = await createSigningClient();
@@ -32,7 +44,7 @@ export const useSigningClient = ({chainName}: UseSigningClientProps): {
                 registerBzeEncoders(client);
                 setSigningClient(client);
                 setIsSigningClientReady(true);
-                hasInitialized.current = true;
+                initializedForWallet.current = wallet;
             }
         }
 
