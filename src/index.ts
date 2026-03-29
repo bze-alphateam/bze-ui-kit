@@ -76,6 +76,7 @@ export {
     validateRestEndpoint, validateRpcEndpoint, validateEndpoints, convertToWebSocketUrl
 } from './utils/validation';
 export { getValidatorSupportedDenoms, getValidatorPageUrl, isPoolSupportedByValidator } from './utils/validator';
+export { subscribeToBlockchainEvents } from './utils/ws_rpc_client';
 
 // === Constants ===
 export {
