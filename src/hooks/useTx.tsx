@@ -8,7 +8,7 @@ import {getChainNativeAssetDenom} from "../constants/assets";
 import {useSigningClient} from "./useSigningClient";
 import {openExternalLink, sleep} from "../utils/functions";
 import BigNumber from "bignumber.js";
-import {DEFAULT_TX_MEMO} from "../constants/placeholders";
+import {getDefaultTxMemo} from "../constants/placeholders";
 import {useCallback, useMemo, useState} from "react";
 import {useLiquidityPools} from "./useLiquidityPools";
 import {useSettings} from "./useSettings";
@@ -174,7 +174,7 @@ const useTx = (chainName: string) => {
             try {
                 const fee = await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
-                const broadcastResult = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? DEFAULT_TX_MEMO)
+                const broadcastResult = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? getDefaultTxMemo())
                 setProgressTrack("Waiting for confirmation")
                 const resp = await broadcastResult.wait();
                 const txHash = resp?.txhash || broadcastResult.transactionHash;
