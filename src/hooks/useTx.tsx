@@ -1,4 +1,4 @@
-import {DeliverTxResponse, EncodeObject, StdFee} from "@bze/bzejs/types";
+import {EncodeObject, StdFee} from "@bze/bzejs/types";
 import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
 import {useChain} from "@interchain-kit/react";
 import {getChainExplorerURL, getChainName, getGasMultiplier} from "../constants/chain";
@@ -166,20 +166,21 @@ const useTx = (chainName: string) => {
         }
     }, [simulateFee]);
 
-    const tx = useCallback(async (msgs: EncodeObject[], options?: TxOptions|undefined) => {
+    const tx = useCallback(async (msgs: EncodeObject[], options?: TxOptions|undefined): Promise<boolean> => {
         if (!address) {
             toast.error(TxStatus.Failed, 'Please connect the wallet')
-            return;
+            return false;
         }
 
         if (!(await canUseClient())) {
             toast.error(TxStatus.Failed, 'Can not find suitable signing client. Make sure your wallet is installed, connected and unlocked.')
             disconnect()
-            return;
+            return false;
         }
 
         setProgressTrack("Getting fee")
         const broadcastToastId = toast.loading(TxStatus.Broadcasting,'Waiting for transaction to be signed and included in block')
+        let success = false;
         if (signingClient) {
             try {
                 const fee = await getFee(msgs, options);
@@ -189,6 +190,7 @@ const useTx = (chainName: string) => {
                 const resp = await broadcastResult.wait();
                 const txHash = resp?.txhash || broadcastResult.transactionHash;
                 if (resp?.code === 0) {
+                    success = true;
                     setProgressTrack("Transaction sent")
                     toast.clickableSuccess(TxStatus.Successful, () => {openExternalLink(`${getChainExplorerURL(chainName ?? defaultChainName)}/tx/${txHash}`)}, 'View in Explorer');
 
@@ -204,15 +206,21 @@ const useTx = (chainName: string) => {
                 }
             } catch (e) {
                 console.error(e);
-                //@ts-expect-error - small chances for e to be undefined
-                if (e.message.includes("Failed to retrieve account from signer")) {
-                    disconnect()
+                // Disconnect on any signer-related error — the signing client is out of sync
+                // with the wallet (e.g. account switched outside the UI between sessions).
+                const errMsg = (e as any)?.message ?? "";
+                const isSignerError = [
+                    "Failed to retrieve account from signer",
+                    "Signer address does not match",
+                    "signers mismatch",
+                    "Signer mismatched",
+                ].some(pattern => errMsg.includes(pattern));
+                if (isSignerError) {
+                    disconnect();
                 }
-                // @ts-expect-error - small chances for e to be undefined
-                toast.error(TxStatus.Failed, prettyError(e?.message));
+                toast.error(TxStatus.Failed, prettyError(errMsg));
                 if (options?.onFailure) {
-                    // @ts-expect-error - small chances for e to be undefined
-                    options.onFailure(prettyError(e?.message) || "Unknown error")
+                    options.onFailure(prettyError(errMsg) || "Unknown error")
                 }
             }
         }
@@ -220,6 +228,7 @@ const useTx = (chainName: string) => {
         setTimeout(() => {
             setProgressTrack("")
         }, options?.progressTrackerTimeout || 5000)
+        return success;
     }, [address, canUseClient, toast, signingClient, disconnect, getFee, chainName, defaultChainName]);
 
     return {
