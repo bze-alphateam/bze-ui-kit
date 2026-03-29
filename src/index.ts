@@ -49,12 +49,18 @@ export {
     isFactoryDenom, isIbcDenom, isLpDenom, isNativeDenom,
     getDenomType, truncateDenom, isIbcAsset
 } from './utils/denom';
-export { getMarketOrderBookChangedEvent, getMarketEventKey, mapEventAttributes } from './utils/events';
+export {
+    getMarketOrderBookChangedEvent, getMarketEventKey, mapEventAttributes,
+    getEventKeyValue, getEventMarketId,
+    isAddressTransfer, isOrderBookEvent, isOrderExecutedEvent, isSwapEvent,
+    isCoinbaseEvent, isBurnEvent, isEpochStartEvent, getMintedAmount,
+} from './utils/events';
 export {
     formatUsdAmount, shortNumberFormat, intlDateFormat,
     formatDate, formatTimeRemaining, formatTimeRemainingFromEpochs
 } from './utils/formatter';
 export { sleep, openExternalLink } from './utils/functions';
+export { coins, parseCoins } from './utils/coins';
 export { canDepositFromIBC, canSendToIBC, denomOnFirstHopChainFromTrace, getIbcTransferTimeout } from './utils/ibc';
 export {
     calculateUserPoolData, calculatePoolOppositeAmount, calculatePoolPrice,
@@ -75,6 +81,7 @@ export {
     validateRestEndpoint, validateRpcEndpoint, validateEndpoints, convertToWebSocketUrl
 } from './utils/validation';
 export { getValidatorSupportedDenoms, getValidatorPageUrl, isPoolSupportedByValidator } from './utils/validator';
+export { subscribeToBlockchainEvents } from './utils/ws_rpc_client';
 
 // === Constants ===
 export {
@@ -159,6 +166,7 @@ export type { AssetsContextType } from './contexts/assets_context';
 export { useAssetsContext, useAssets, useAsset, useAssetsManager, useIBCChains } from './hooks/useAssets';
 export { useConnectionType } from './hooks/useConnectionType';
 export { useSigningClient } from './hooks/useSigningClient';
+export { useWalletHealthCheck } from './hooks/useWalletHealthCheck';
 export { useAssetPrice } from './hooks/usePrices';
 export { useSettings } from './hooks/useSettings';
 export { useBalances, useBalance } from './hooks/useBalances';
