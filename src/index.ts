@@ -166,6 +166,7 @@ export type { AssetsContextType } from './contexts/assets_context';
 export { useAssetsContext, useAssets, useAsset, useAssetsManager, useIBCChains } from './hooks/useAssets';
 export { useConnectionType } from './hooks/useConnectionType';
 export { useSigningClient } from './hooks/useSigningClient';
+export { useWalletHealthCheck } from './hooks/useWalletHealthCheck';
 export { useAssetPrice } from './hooks/usePrices';
 export { useSettings } from './hooks/useSettings';
 export { useBalances, useBalance } from './hooks/useBalances';
