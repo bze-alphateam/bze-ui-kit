@@ -1,11 +1,13 @@
 import {DeliverTxResponse, EncodeObject, StdFee} from "@bze/bzejs/types";
-import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
+import {Tx, TxBody, AuthInfo, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
+import {toBase64} from "@interchainjs/encoding";
 import {useChain} from "@interchain-kit/react";
 import {getChainExplorerURL, getChainName} from "../constants/chain";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
 import {getChainNativeAssetDenom} from "../constants/assets";
 import {useSigningClient} from "./useSigningClient";
+import {getSettings} from "../storage/settings";
 import {openExternalLink, sleep} from "../utils/functions";
 import BigNumber from "bignumber.js";
 import {DEFAULT_TX_MEMO} from "../constants/placeholders";
@@ -22,7 +24,6 @@ export interface TxOptions {
     onFailure?: (err: string) => void;
     memo?: string;
     progressTrackerTimeout?: number;
-    fallbackOnSimulate?: boolean;
 }
 
 export enum TxStatus {
@@ -90,7 +91,7 @@ const useTx = (chainName: string) => {
         const nativeDenom = getChainNativeAssetDenom();
         const signer = signingClient as any;
 
-        // Encode messages into TxBody using the signer's own encoders (same as interchainjs does internally)
+        // Encode messages into TxBody using the signer's own encoders
         const encodedMessages = messages.map(({typeUrl, value}) => {
             const encoder = signer.getEncoder(typeUrl);
             const encodedWriter = encoder.encode(value);
@@ -98,10 +99,28 @@ const useTx = (chainName: string) => {
             return {typeUrl, value: encodedValue};
         });
         const txBody = TxBody.fromPartial({messages: encodedMessages, memo: memo ?? ''});
-        const signerInfo = SignerInfo.fromPartial({modeInfo: {single: {mode: 1}}, sequence: BigInt(0)});
+        const authInfo = AuthInfo.fromPartial({
+            signerInfos: [SignerInfo.fromPartial({modeInfo: {single: {mode: 1}}, sequence: BigInt(0)})],
+            fee: {amount: [], gasLimit: BigInt(0), payer: '', granter: ''},
+        });
+        const tx = Tx.fromPartial({body: txBody, authInfo, signatures: [new Uint8Array(0)]});
+        const txBytes = Tx.encode(tx).finish();
 
-        const {gasInfo} = await signer.simulateByTxBody(txBody, [signerInfo]);
-        const gasEstimated = Number(gasInfo?.gasUsed ?? BigInt(0));
+        // Use REST endpoint for simulation — same approach as cosmjs, avoids ABCI routing issues
+        const restEndpoint = getSettings().endpoints.restEndpoint.replace(/\/$/, '');
+        const simResponse = await fetch(`${restEndpoint}/cosmos/tx/v1beta1/simulate`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({tx_bytes: toBase64(txBytes)}),
+        });
+        if (!simResponse.ok) {
+            throw new Error(`Simulation request failed with status ${simResponse.status}`);
+        }
+        const simData = await simResponse.json();
+        const gasEstimated = Number(simData?.gas_info?.gas_used ?? 0);
+        if (gasEstimated === 0) {
+            throw new Error("Gas simulation returned 0");
+        }
 
         const gasAmount = BigNumber(gasEstimated).multipliedBy(1.5);
         const gasPayment = gasAmount.multipliedBy(gasPrice);
@@ -148,13 +167,8 @@ const useTx = (chainName: string) => {
                 return await simulateFee(messages, options?.memo);
             }
         } catch (e) {
-            console.error("could not get fee: ", e);
-
-            if (options?.fallbackOnSimulate) {
-                return defaultFee;
-            } else {
-                throw e;
-            }
+            console.error("could not get fee, using default fee: ", e);
+            return defaultFee;
         }
     }, [simulateFee]);
 
