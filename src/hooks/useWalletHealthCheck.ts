@@ -1,4 +1,4 @@
-import {useEffect} from "react";
+import {useEffect, useRef} from "react";
 import {useChain} from "@interchain-kit/react";
 import {WalletState} from "@interchain-kit/core";
 import {getChainName} from "../constants/chain";
@@ -8,38 +8,44 @@ const SIGNING_CLIENT_TIMEOUT_MS = 5_000;
 
 /**
  * Validates the wallet connection on mount and proactively disconnects if the
- * wallet state restored from localStorage is stale (e.g. extension locked after
- * the user left the page for hours).
+ * wallet state restored from localStorage is stale (extension locked, or account
+ * switched outside the UI between sessions).
  *
  * interchain-kit persists WalletState.Connected + the account address in
- * localStorage and restores it on every page load without verifying the
- * extension is actually available. This hook catches that case by attempting
- * to create a signing client immediately on mount and calling disconnect() if
- * the attempt fails or times out — clearing the false "connected" UI state
- * before the user tries a transaction.
+ * localStorage and restores it on every page load without re-verifying the
+ * extension. This hook catches that by calling refreshAccount() — interchain-kit's
+ * own method for forcing a live fetch from the extension — and comparing the result
+ * against the cached address. On mismatch or failure, shows a toast and disconnects.
  *
- * Intentionally runs only once on mount (empty deps array) so it doesn't
- * interfere with normal connect/disconnect flows initiated by the user.
+ * Runs on every status change (not just mount) because interchain-kit restores state
+ * asynchronously, so status is Disconnected on the first render and only becomes
+ * Connected after its own useEffect/init() completes. The hasValidated ref ensures
+ * we only run the check once per page load.
  */
 export const useWalletHealthCheck = (chainName?: string) => {
-    const {status, getSigningClient, disconnect, address} = useChain(chainName ?? getChainName());
+    const {status, disconnect, address, wallet} = useChain(chainName ?? getChainName());
+    const hasValidated = useRef(false);
 
     useEffect(() => {
-        // Not connected at mount — nothing stale to validate
         if (status !== WalletState.Connected) return;
+        if (hasValidated.current) return;
+        hasValidated.current = true;
 
         const validate = async () => {
             try {
-                const client = await Promise.race([
-                    getSigningClient(),
-                    new Promise<null>((resolve) =>
-                        setTimeout(() => resolve(null), SIGNING_CLIENT_TIMEOUT_MS)
+                // refreshAccount() is interchain-kit's own method for forcing a live
+                // fetch from the extension, bypassing the localStorage cache that
+                // getAccount() returns when an account is already stored. It calls
+                // CosmosWallet.getAccount() → extension.getKey() directly.
+                const refreshed = await Promise.race([
+                    (wallet as any)?.refreshAccount?.().then(() => true),
+                    new Promise<false>((resolve) =>
+                        setTimeout(() => resolve(false), SIGNING_CLIENT_TIMEOUT_MS)
                     ),
                 ]);
 
-                if (!client) {
-                    const msg = "[useWalletHealthCheck] Signing client unavailable or timed out — wallet may be locked. Disconnecting.";
-                    console.error(msg);
+                if (!refreshed) {
+                    console.error("[useWalletHealthCheck] refreshAccount timed out — wallet may be locked. Disconnecting.");
                     toaster.create({
                         title: "Wallet disconnected",
                         description: "Could not reach your wallet extension. Please reconnect.",
@@ -51,15 +57,13 @@ export const useWalletHealthCheck = (chainName?: string) => {
                     return;
                 }
 
-                // Detect the case where the user switched wallet accounts OUTSIDE
-                // the UI (close tab → switch account in extension → reopen tab).
-                // interchain-kit restores the old address from localStorage but
-                // the extension's signer belongs to the new account — any attempt
-                // to broadcast would fail with "signers mismatch".
-                const accounts = await (client as any).getAccounts?.();
-                if (accounts?.length > 0 && accounts[0].address !== address) {
-                    const msg = `[useWalletHealthCheck] Address mismatch — interchain-kit cached "${address}" but signing client reports "${accounts[0].address}". Wallet was likely switched outside the UI. Disconnecting.`;
-                    console.error(msg);
+                // After refreshAccount() the store holds the live account.
+                // getAccount() will now return it from the freshly updated cache.
+                const freshAccount = await (wallet as any)?.getAccount?.();
+                const freshAddress = freshAccount?.address;
+
+                if (freshAddress && freshAddress !== address) {
+                    console.error(`[useWalletHealthCheck] Address mismatch — interchain-kit cached "${address}" but extension reports "${freshAddress}". Wallet was switched outside the UI. Disconnecting.`);
                     toaster.create({
                         title: "Wallet account changed",
                         description: "Your wallet account changed since your last visit. Please reconnect.",
@@ -70,7 +74,6 @@ export const useWalletHealthCheck = (chainName?: string) => {
                     disconnect();
                 }
             } catch (err) {
-                // Extension threw — treat as unavailable
                 console.error("[useWalletHealthCheck] Error validating wallet connection:", err);
                 toaster.create({
                     title: "Wallet connection error",
@@ -84,6 +87,5 @@ export const useWalletHealthCheck = (chainName?: string) => {
         };
 
         validate();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // intentionally run once on mount only
+    }, [status]);
 };
