@@ -1,6 +1,6 @@
 'use client'
 import "@interchain-kit/react/styles.css";
-import {InterchainWalletModal, useChain} from "@interchain-kit/react";
+import {InterchainWalletModal, useChain, useWalletManager} from "@interchain-kit/react";
 import {
     Badge,
     Box,
@@ -38,6 +38,7 @@ import {cosmos} from "@bze/bzejs";
 import {openExternalLink} from "../../utils/functions";
 import {shortNumberFormat} from "../../utils/formatter";
 import {HighlightText} from "../highlight";
+import {isInHub} from "@bze/hub-connector";
 
 type ViewState = 'balances' | 'send'
 
@@ -449,7 +450,17 @@ export const WalletSidebarContent = ({ accentColor = 'blue' }: WalletSidebarCont
         disconnect,
         connect,
     } = useChain(getChainName());
+    const walletManager = useWalletManager();
     const {assetsBalances, isLoading: assetsLoading} = useBalances();
+
+    // In BZE Hub: auto-connect to Keplr (our bridge) without showing the modal
+    const handleConnect = useCallback(() => {
+        if (isInHub()) {
+            walletManager.connect("keplr-extension", getChainName());
+        } else {
+            connect();
+        }
+    }, [connect, walletManager]);
 
     const balancesWithoutLps = useMemo(() => {
         if (assetsLoading) return [];
@@ -600,7 +611,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue' }: WalletSidebarCont
         <VStack gap="6" align="stretch">
             {/* Wallet Status - Always at top */}
             <Box>
-                <InterchainWalletModal />
+                {!isInHub() && <InterchainWalletModal />}
                 <HStack justify="space-between" mb="3">
                     <Text fontSize="sm" fontWeight="medium">
                         Wallet Status
@@ -665,9 +676,9 @@ export const WalletSidebarContent = ({ accentColor = 'blue' }: WalletSidebarCont
                         size="sm"
                         variant="solid"
                         w="full"
-                        onClick={connect}
+                        onClick={handleConnect}
                     >
-                        Connect Wallet
+                        {isInHub() ? "Connect to Hub Wallet" : "Connect Wallet"}
                     </Button>
                 }
             </Box>

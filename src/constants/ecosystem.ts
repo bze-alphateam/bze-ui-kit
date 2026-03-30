@@ -1,5 +1,6 @@
 import type { IconType } from 'react-icons';
 import { LuGlobe, LuCoins, LuChartColumn, LuFlame, LuFactory } from 'react-icons/lu';
+import { isInHub } from '@bze/hub-connector';
 
 export const ECOSYSTEM_MENU_LABEL = 'Other';
 
@@ -68,6 +69,9 @@ const LABEL_OVERRIDES: Record<string, string | undefined> = {
  * - NEXT_PUBLIC_ECOSYSTEM_EXCLUDED    — comma-separated keys to exclude (e.g. "staking,factory")
  */
 export const getEcosystemApps = (): EcosystemApp[] => {
+    // In BZE Hub: the shell has its own tabs for ecosystem apps, no need for the menu
+    if (isInHub()) return [];
+
     const excluded = getExcludedKeys();
 
     return DEFAULT_APPS
