@@ -3,6 +3,11 @@
 export { setStorageKeyVersion } from './storage/storage';
 export { setDefaultTxMemo, getDefaultTxMemo } from './constants/placeholders';
 
+// === Hub Connector ===
+export { HubConnectorInit } from './components/hub-connector-init';
+// Re-exported from @bze/hub-connector for convenience
+export { isInHub, getHubConfig } from '@bze/hub-connector';
+
 // === Types ===
 export type { Asset, IBCData, IBCCounterparty, IbcTransitionMock, ChainAssets } from './types/asset';
 export { LP_ASSETS_DECIMALS } from './types/asset';
