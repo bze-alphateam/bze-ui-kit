@@ -11,6 +11,10 @@ export const setStorageKeyVersion = (version: string) => {
     _storageKeyVersion = version;
 }
 
+export const getStorageKeyVersion = (): string => {
+    return _storageKeyVersion;
+}
+
 export const getFromLocalStorage = (key: string): string | null => {
     if (typeof window === 'undefined') return null;
 

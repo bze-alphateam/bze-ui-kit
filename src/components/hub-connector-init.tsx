@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { initHubConnector, useIsInHub } from "@bze/hub-connector"
 import { useTheme } from "next-themes"
+import { getStorageKeyVersion } from "../storage/storage"
 
 /**
  * HubConnectorInit — renders nothing, initializes the BZE Hub connector on mount.
@@ -32,7 +33,7 @@ export const HubConnectorInit = () => {
     const inHub = useIsInHub()
 
     useEffect(() => {
-        initHubConnector().catch(() => {})
+        initHubConnector({ storageKeyVersion: getStorageKeyVersion() }).catch(() => {})
     }, [])
 
     // Sync color mode from Hub shell to dApp
