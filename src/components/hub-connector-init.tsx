@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from "react"
-import { initHubConnector, isInHub } from "@bze/hub-connector"
+import { initHubConnector, useIsInHub } from "@bze/hub-connector"
 import { useTheme } from "next-themes"
 
 /**
@@ -29,6 +29,7 @@ import { useTheme } from "next-themes"
  */
 export const HubConnectorInit = () => {
     const { setTheme } = useTheme()
+    const inHub = useIsInHub()
 
     useEffect(() => {
         initHubConnector().catch(() => {})
@@ -36,7 +37,7 @@ export const HubConnectorInit = () => {
 
     // Sync color mode from Hub shell to dApp
     useEffect(() => {
-        if (!isInHub()) return
+        if (!inHub) return
 
         const handler = (event: Event) => {
             const theme = (event as CustomEvent).detail
@@ -47,7 +48,7 @@ export const HubConnectorInit = () => {
 
         window.addEventListener("bze-hub:theme-changed", handler)
         return () => window.removeEventListener("bze-hub:theme-changed", handler)
-    }, [setTheme])
+    }, [setTheme, inHub])
 
     return null
 }

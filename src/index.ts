@@ -6,7 +6,7 @@ export { setDefaultTxMemo, getDefaultTxMemo } from './constants/placeholders';
 // === Hub Connector ===
 export { HubConnectorInit } from './components/hub-connector-init';
 // Re-exported from @bze/hub-connector for convenience
-export { isInHub, getHubConfig } from '@bze/hub-connector';
+export { isInHub, useIsInHub, getHubConfig } from '@bze/hub-connector';
 
 // === Types ===
 export type { Asset, IBCData, IBCCounterparty, IbcTransitionMock, ChainAssets } from './types/asset';
