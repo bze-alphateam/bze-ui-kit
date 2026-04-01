@@ -44,6 +44,7 @@ type ViewState = 'balances' | 'send'
 
 interface WalletSidebarContentProps {
     accentColor?: string
+    skipWalletModal?: boolean
 }
 
 interface BalanceItemProps {
@@ -436,7 +437,7 @@ const SendForm = ({balances, onClose, selectedTicker, accentColor}: {balances: A
     )
 }
 
-export const WalletSidebarContent = ({ accentColor = 'blue' }: WalletSidebarContentProps) => {
+export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = false }: WalletSidebarContentProps) => {
     const [viewState, setViewState] = useState<ViewState>('balances')
     const [isDisconnecting, setIsDisconnecting] = useState(false)
     const [showCopiedTooltip, setShowCopiedTooltip] = useState(false)
@@ -612,7 +613,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue' }: WalletSidebarCont
         <VStack gap="6" align="stretch">
             {/* Wallet Status - Always at top */}
             <Box>
-                {!inHub && <InterchainWalletModal />}
+                {!inHub && !skipWalletModal && <InterchainWalletModal />}
                 <HStack justify="space-between" mb="3">
                     <Text fontSize="sm" fontWeight="medium">
                         Wallet Status
