@@ -139,7 +139,7 @@ const useTx = (chainName: string) => {
         if (!expectedAmount.isPositive()) {
             return nativeFee;
         }
-        expectedAmount = expectedAmount.multipliedBy(1.5).integerValue(BigNumber.ROUND_FLOOR)
+        expectedAmount = expectedAmount.multipliedBy(1.1).integerValue(BigNumber.ROUND_CEIL)
         //if the fee resulted from swapping the fee amount is lower than 1, it can't be paid.
         //we have to make sure the blockchain can capture the swap fee.
         if (expectedAmount.multipliedBy(pool.fee).lt(1)) {
@@ -148,7 +148,7 @@ const useTx = (chainName: string) => {
 
         return {
             amount: coins(expectedAmount.toFixed(0).toString(), feeDenom),
-            gas: gasAmount.multipliedBy(1.5).toFixed(0)
+            gas: gasAmount.toFixed(0)
         };
     }, [signingClient, address, feeDenom, getDenomsPool]);
 
