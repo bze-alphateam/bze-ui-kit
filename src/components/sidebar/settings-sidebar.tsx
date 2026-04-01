@@ -104,16 +104,14 @@ export const SettingsSidebarContent = ({ accentColor = 'blue' }: SettingsSidebar
         if (endpointsSuccess && feeTokenSuccess) {
             toast.success('Success!', 'Settings have been saved.')
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [updateEndpoints, updatePreferredFeeDenom, toast])
 
     const handleResetToDefaults = useCallback(() => {
         setRestEndpoint(defaultSettings.endpoints.restEndpoint)
         setRpcEndpoint(defaultSettings.endpoints.rpcEndpoint)
         setPreferredFeeDenom(defaultSettings.preferredFeeDenom)
         setValidationResults({})
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [defaultSettings])
 
     const connectionStatusText = useMemo(() => {
         switch(connectionType) {

@@ -166,6 +166,8 @@ export {
 // === Context ===
 export { AssetsContext } from './contexts/assets_context';
 export type { AssetsContextType } from './contexts/assets_context';
+export { SettingsContext } from './contexts/settings_context';
+export type { SettingsContextType } from './contexts/settings_context';
 
 // === Hooks ===
 export { useAssetsContext, useAssets, useAsset, useAssetsManager, useIBCChains } from './hooks/useAssets';
@@ -187,6 +189,7 @@ export type { TxOptions, TxSuccessResponse } from './hooks/useTx';
 export { useValidatorLogos } from './hooks/useValidatorLogos';
 
 // === Components ===
+export { SettingsProvider } from './components/settings-provider';
 export { Toaster } from './components/toaster';
 export { HighlightText } from './components/highlight';
 export { Sidebar } from './components/sidebar/sidebar';
