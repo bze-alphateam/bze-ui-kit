@@ -22,7 +22,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@bze/bzejs": "2.0.2",
+    "@bze/bzejs": "3.0.0",
     "@chain-registry/types": "2.0.178",
     "@chain-registry/utils": "2.0.178",
     "@chakra-ui/react": "^3.0.0",
