@@ -4,7 +4,9 @@ import {WalletState} from "@interchain-kit/core";
 import {getChainName} from "../constants/chain";
 import {toaster} from "../components/toaster";
 
-const SIGNING_CLIENT_TIMEOUT_MS = 5_000;
+const REFRESH_TIMEOUT_MS = 2_000;
+const INITIAL_DELAY_MS = 2_000;
+const MAX_RETRIES = 3;
 
 /**
  * Validates the wallet connection on mount and proactively disconnects if the
@@ -16,6 +18,10 @@ const SIGNING_CLIENT_TIMEOUT_MS = 5_000;
  * extension. This hook catches that by calling refreshAccount() — interchain-kit's
  * own method for forcing a live fetch from the extension — and comparing the result
  * against the cached address. On mismatch or failure, shows a toast and disconnects.
+ *
+ * After a page refresh, wallet extensions (Keplr, Leap) inject their API asynchronously.
+ * To avoid false negatives we wait an initial 2 seconds before the first attempt, then
+ * retry up to 3 times with 2-second timeouts (8 seconds worst case) before disconnecting.
  *
  * Runs on every status change (not just mount) because interchain-kit restores state
  * asynchronously, so status is Disconnected on the first render and only becomes
@@ -31,21 +37,37 @@ export const useWalletHealthCheck = (chainName?: string) => {
         if (hasValidated.current) return;
         hasValidated.current = true;
 
+        let cancelled = false;
+
+        const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+        const tryRefresh = async (): Promise<boolean> => {
+            const refreshed = await Promise.race([
+                (wallet as any)?.refreshAccount?.().then(() => true),
+                new Promise<false>((resolve) =>
+                    setTimeout(() => resolve(false), REFRESH_TIMEOUT_MS)
+                ),
+            ]);
+            return !!refreshed;
+        };
+
         const validate = async () => {
+            // Wait for wallet extension to initialize after page refresh
+            await sleep(INITIAL_DELAY_MS);
+            if (cancelled) return;
+
             try {
-                // refreshAccount() is interchain-kit's own method for forcing a live
-                // fetch from the extension, bypassing the localStorage cache that
-                // getAccount() returns when an account is already stored. It calls
-                // CosmosWallet.getAccount() → extension.getKey() directly.
-                const refreshed = await Promise.race([
-                    (wallet as any)?.refreshAccount?.().then(() => true),
-                    new Promise<false>((resolve) =>
-                        setTimeout(() => resolve(false), SIGNING_CLIENT_TIMEOUT_MS)
-                    ),
-                ]);
+                let refreshed = false;
+                for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                    if (cancelled) return;
+                    refreshed = await tryRefresh();
+                    if (refreshed) break;
+                }
+
+                if (cancelled) return;
 
                 if (!refreshed) {
-                    console.error("[useWalletHealthCheck] refreshAccount timed out — wallet may be locked. Disconnecting.");
+                    console.error("[useWalletHealthCheck] refreshAccount failed after retries — wallet may be locked. Disconnecting.");
                     toaster.create({
                         title: "Wallet disconnected",
                         description: "Could not reach your wallet extension. Please reconnect.",
@@ -62,6 +84,8 @@ export const useWalletHealthCheck = (chainName?: string) => {
                 const freshAccount = await (wallet as any)?.getAccount?.();
                 const freshAddress = freshAccount?.address;
 
+                if (cancelled) return;
+
                 if (freshAddress && freshAddress !== address) {
                     console.error(`[useWalletHealthCheck] Address mismatch — interchain-kit cached "${address}" but extension reports "${freshAddress}". Wallet was switched outside the UI. Disconnecting.`);
                     toaster.create({
@@ -74,6 +98,7 @@ export const useWalletHealthCheck = (chainName?: string) => {
                     disconnect();
                 }
             } catch (err) {
+                if (cancelled) return;
                 console.error("[useWalletHealthCheck] Error validating wallet connection:", err);
                 toaster.create({
                     title: "Wallet connection error",
@@ -87,5 +112,7 @@ export const useWalletHealthCheck = (chainName?: string) => {
         };
 
         validate();
+
+        return () => { cancelled = true; };
     }, [status]);
 };
