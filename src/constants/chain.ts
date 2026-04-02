@@ -101,3 +101,8 @@ export const getGasMultiplier = (): number => {
     const val = parseFloat(process.env.NEXT_PUBLIC_GAS_MULTIPLIER || '');
     return isNaN(val) || val <= 0 ? 1.5 : val;
 }
+
+export const getGasPrice = (): number => {
+    const val = parseFloat(process.env.NEXT_PUBLIC_GAS_PRICE || '');
+    return isNaN(val) || val <= 0 ? 0.02 : val;
+}

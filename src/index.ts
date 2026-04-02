@@ -97,7 +97,7 @@ export {
 export {
     getChainId, getChainName, isTestnetChain, getChains, getChainByChainId,
     getChainByName, getWalletChainsNames, getAssetLists, getIBCAssetList,
-    getChainAddressPrefix, getChainExplorerURL, getLockerAddress
+    getChainAddressPrefix, getChainExplorerURL, getLockerAddress, getGasPrice
 } from './constants/chain';
 export {
     getRestURL, getRpcURL, getArchwayRpcURL, getOsmosisRpcUrl, getNobleRpcUrl,

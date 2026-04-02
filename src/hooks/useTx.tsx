@@ -1,7 +1,7 @@
 import {EncodeObject, StdFee} from "@bze/bzejs/types";
 import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
 import {useChain} from "@interchain-kit/react";
-import {getChainExplorerURL, getChainName, getGasMultiplier} from "../constants/chain";
+import {getChainExplorerURL, getChainName, getGasMultiplier, getGasPrice} from "../constants/chain";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
 import {getChainNativeAssetDenom} from "../constants/assets";
@@ -95,7 +95,7 @@ const useTx = (chainName: string) => {
     }, [isSigningClientReady, signingClientError]);
 
     const simulateFee = useCallback(async (messages: EncodeObject[], memo: string | undefined): Promise<StdFee> => {
-        const gasPrice = 0.02;
+        const gasPrice = getGasPrice();
         const nativeDenom = getChainNativeAssetDenom();
         const signer = signingClient as any;
 
@@ -148,7 +148,7 @@ const useTx = (chainName: string) => {
 
         return {
             amount: coins(expectedAmount.toFixed(0).toString(), feeDenom),
-            gas: gasAmount.toFixed(0)
+            gas: gasAmount.multipliedBy(1.5).toFixed(0)
         };
     }, [signingClient, address, feeDenom, getDenomsPool]);
 
