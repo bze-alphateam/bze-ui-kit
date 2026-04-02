@@ -147,6 +147,7 @@ export {
     getMarketHistory, getAddressMarketOrders, getAddressFullMarketOrders, getMarketOrder
 } from './query/markets';
 export { getBZEUSDPrice } from './query/prices';
+export { getTradebinParams } from './query/tradebin_params';
 export {
     getStakingRewards, getAddressPendingUnlock, getPendingUnlockParticipants,
     getStakingRewardParticipantByAddress, getAddressStakingRewards

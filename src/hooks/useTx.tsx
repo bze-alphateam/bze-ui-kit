@@ -12,6 +12,7 @@ import {getDefaultTxMemo} from "../constants/placeholders";
 import {useCallback, useMemo, useState} from "react";
 import {useLiquidityPools} from "./useLiquidityPools";
 import {useSettings} from "./useSettings";
+import {useFeeTokens} from "./useFeeTokens";
 import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
 import {toBigNumber} from "../utils/amount";
 import {coins} from "../utils/coins";
@@ -79,6 +80,7 @@ const useTx = (chainName: string) => {
     const [progressTrack, setProgressTrack] = useState("")
     const {getDenomsPool} = useLiquidityPools()
     const {feeDenom} = useSettings()
+    const {isValidFeeDenom} = useFeeTokens()
 
     const defaultChainName = useMemo(() => getChainName(), []);
 
@@ -128,6 +130,11 @@ const useTx = (chainName: string) => {
             return nativeFee;
         }
 
+        //validate that the selected fee denom still has enough liquidity
+        if (!isValidFeeDenom(feeDenom)) {
+            return nativeFee;
+        }
+
         //search for the pool for the fee denom and calculate the expected amount
         const pool = getDenomsPool(feeDenom, nativeDenom)
         if (!pool) {
@@ -150,7 +157,7 @@ const useTx = (chainName: string) => {
             amount: coins(expectedAmount.toFixed(0).toString(), feeDenom),
             gas: gasAmount.multipliedBy(getNonNativeGasMultiplier()).toFixed(0)
         };
-    }, [signingClient, address, feeDenom, getDenomsPool]);
+    }, [signingClient, address, feeDenom, getDenomsPool, isValidFeeDenom]);
 
     const getFee = useCallback(async (messages: EncodeObject[], options?: TxOptions|undefined): Promise<StdFee> => {
         try {

@@ -3,6 +3,8 @@ const errorsMap: { [key: string]: string } = {
     "the resulted amount is too low": "Swap minimum amount could not be met. Increase the slippage and try again.",
     "amount is too low to be traded": "Amount is too low to be traded",
     "can not buy more than 50 tickets": "You can only contribute up to 50 times per transaction.",
+    "can be used to pay for fees only if enough liquidity is available": "Your selected fee token does not have enough liquidity. Please switch to the native token in Settings.",
+    "broadcast failed with code 7": "Transaction rejected: your selected fee token may not have enough liquidity. Try switching to the native token in Settings.",
 };
 
 export const prettyError = (err: string|undefined): string|undefined => {
