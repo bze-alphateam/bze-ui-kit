@@ -17,6 +17,15 @@ import {denomOnFirstHopChainFromTrace} from "../utils/ibc";
 
 const ORIGIN_CHAIN_PLACEHOLDER = "Unknown chain"
 
+// Appends origin chain to name/ticker for non-canonical IBC assets (resolved via denom trace, not chain registry)
+const appendOriginChain = (asset: Asset): void => {
+    const chainName = asset.IBCData?.counterparty?.chainName
+    if (!chainName) return
+
+    asset.ticker = `${asset.ticker}.${chainName}`
+    asset.name = `${asset.name} (${asset.IBCData?.counterparty?.chainPrettyName || chainName})`
+}
+
 const getAssetLogo = (asset: ChainRegistryAsset): string => {
     return asset.logoURIs?.svg ?? asset.logoURIs?.png ?? asset.images?.[0]?.svg ?? asset.images?.[0]?.png ?? TOKEN_LOGO_PLACEHOLDER
 }
@@ -157,6 +166,7 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
         asset.decimals = getExponentByDenomFromAsset(registryAsset, registryAsset.display) ?? 0
         asset.logo = getAssetLogo(registryAsset)
         asset.verified = true
+        appendOriginChain(asset)
 
         return asset;
     }
@@ -164,6 +174,7 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
     const localAsset = await populateAssetFromBZEChainRegistryAssetList(asset)
     if (localAsset) {
         localAsset.verified = true
+        appendOriginChain(localAsset)
         return localAsset
     }
 
@@ -177,6 +188,7 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
 
     asset.verified = false
     asset.decimals = 0
+    appendOriginChain(asset)
 
     return asset;
 }
