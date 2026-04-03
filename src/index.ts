@@ -15,6 +15,17 @@ export type { Balance, PrettyBalance } from './types/balance';
 export type { TradeViewChart } from './types/charts';
 export type { HistoryOrder, SwapHistory } from './types/aggregator';
 export type { DenomTrace, CounterpartyChainForChannel } from './types/ibc';
+export type {
+    AllowedChain, AllowedAsset, TransferDirection, TransferMechanism,
+    CrossChainTransferRequest, RoutePreview, RoutePreviewFee,
+    SkipRouteRequest, SkipRouteResponse, SkipMsgsRequest, SkipMsgsResponse,
+    SkipTx, SkipMsg, SkipEvmTx, SkipErc20Approval, SkipOperation,
+    SkipEstimatedFee, SkipRouteWarning,
+    SkipTxStatusRequest, SkipTxStatusResponse, SkipTxState,
+    SkipTransferStatus, SkipTransferEvent,
+    CrossChainTxState, CrossChainTxRecord,
+    SkipChain, SkipAsset,
+} from './types/cross_chain';
 export type { LiquidityPoolData, UserPoolData, SwapRouteResult } from './types/liquidity_pool';
 export type { Market, MarketData, ActiveOrders } from './types/market';
 export { ORDER_TYPE_BUY, ORDER_TYPE_SELL } from './types/market';
@@ -68,6 +79,10 @@ export { sleep, openExternalLink } from './utils/functions';
 export { coins, parseCoins } from './utils/coins';
 export { canDepositFromIBC, canSendToIBC, denomOnFirstHopChainFromTrace, getIbcTransferTimeout } from './utils/ibc';
 export {
+    buildRoutePreview, buildIbcRoutePreview, formatDuration,
+    findIbcDataForChain, generateTxRecordId,
+} from './utils/cross_chain';
+export {
     calculateUserPoolData, calculatePoolOppositeAmount, calculatePoolPrice,
     createPoolId, poolIdFromPoolDenom
 } from './utils/liquidity_pool';
@@ -112,6 +127,12 @@ export { ECOSYSTEM_MENU_LABEL, getEcosystemApps } from './constants/ecosystem';
 export type { EcosystemApp } from './constants/ecosystem';
 export { MAINNET_CHAIN_INFO_FALLBACK, TESTNET_CHAIN_INFO_FALLBACK } from './constants/keplr';
 export { BZE_TESTNET_2_SUGGEST_CHAIN, BZE_TESTNET_NETWORK } from './constants/testnet';
+export {
+    BZE_SKIP_CHAIN_ID, BZE_NATIVE_DENOM,
+    getAllowedChains, getAllowedChain, getSkipChains, getIbcOnlyChains,
+    getAllowedCosmosChains, getAllowedEvmChains, getTransferMechanism,
+    getSkipProxyUrl, isCrossChainEnabled,
+} from './constants/cross_chain';
 
 // === Storage ===
 export {
@@ -141,6 +162,7 @@ export {
 } from './query/epoch';
 export { getFactoryDenomAdminAddress } from './query/factory';
 export { getIBCTraces, getHashIBCTrace, counterpartyChainForChannel } from './query/ibc';
+export { skipGetChains, skipGetAssets, skipGetRoute, skipGetMsgs, skipGetTxStatus } from './query/skip';
 export { getLiquidityPools, getLiquidityPool } from './query/liquidity_pools';
 export {
     getMarkets, getMarketBuyOrders, getMarketSellOrders, getMarketOrders,
@@ -188,6 +210,7 @@ export { useToast } from './hooks/useToast';
 export { useSDKTx, useBZETx, useIBCTx, TxStatus } from './hooks/useTx';
 export type { TxOptions, TxSuccessResponse } from './hooks/useTx';
 export { useValidatorLogos } from './hooks/useValidatorLogos';
+export { useBridgeRoute } from './hooks/useBridgeRoute';
 
 // === Components ===
 export { SettingsProvider } from './components/settings-provider';
@@ -198,3 +221,4 @@ export { SettingsSidebarContent } from './components/sidebar/settings-sidebar';
 export { WalletSidebarContent } from './components/sidebar/wallet-sidebar';
 export { SettingsToggle } from './components/settings-toggle';
 export { TestnetBanner } from './components/testnet-banner';
+export { BridgeForm } from './components/sidebar/bridge-form';
