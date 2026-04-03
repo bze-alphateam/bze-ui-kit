@@ -173,7 +173,9 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
         asset.decimals = getExponentByDenomFromAsset(registryAsset, registryAsset.display) ?? 0
         asset.logo = getAssetLogo(registryAsset)
         asset.verified = true
-        appendOriginChain(asset)
+        if (isIbcDenom(ibcTrace.base_denom)) {
+            appendOriginChain(asset)
+        }
 
         return asset;
     }
@@ -181,7 +183,9 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
     const localAsset = await populateAssetFromBZEChainRegistryAssetList(asset)
     if (localAsset) {
         localAsset.verified = true
-        appendOriginChain(localAsset)
+        if (isIbcDenom(ibcTrace.base_denom)) {
+            appendOriginChain(localAsset)
+        }
         return localAsset
     }
 
@@ -195,7 +199,9 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
 
     asset.verified = false
     asset.decimals = 0
-    appendOriginChain(asset)
+    if (isIbcDenom(ibcTrace.base_denom)) {
+        appendOriginChain(asset)
+    }
 
     return asset;
 }
