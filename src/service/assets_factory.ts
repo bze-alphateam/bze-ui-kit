@@ -112,6 +112,13 @@ const populateIBCAsset = async (asset: Asset): Promise<Asset | undefined> => {
                     }
                 }
 
+                // If the counterparty base_denom is itself an IBC denom, this token
+                // arrived via an indirect route (e.g. AtomOne through Osmosis).
+                // Suffix with the intermediary chain name to distinguish from canonical assets.
+                if (isIbcDenom(firstTrace.counterparty.base_denom)) {
+                    appendOriginChain(asset)
+                }
+
                 return asset;
             }
         }
