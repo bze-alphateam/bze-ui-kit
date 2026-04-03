@@ -16,9 +16,13 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import { LuX } from 'react-icons/lu';
+import { useChain } from '@interchain-kit/react';
+import { WalletState } from '@interchain-kit/core';
 import { getAllowedCosmosChains } from '../../constants/cross_chain';
+import { getChainName } from '../../constants/chain';
 import type { AllowedAsset, AllowedChain, TransferDirection } from '../../types/cross_chain';
 import { useBridgeRoute } from '../../hooks/useBridgeRoute';
+import { useBridgeTransfer } from '../../hooks/useBridgeTransfer';
 import { sanitizeNumberInput } from '../../utils/number';
 import { formatDuration } from '../../utils/cross_chain';
 import { prettyAmount, uAmountToBigNumberAmount } from '../../utils/amount';
@@ -43,6 +47,36 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
     selectedAsset,
     amount,
   );
+
+  // Wallet connections
+  const counterpartyChainName = selectedChain?.chainName ?? getChainName();
+  const { status: counterpartyStatus, connect: connectCounterparty } = useChain(counterpartyChainName);
+
+  // Transfer execution
+  const { executeTransfer, isExecuting, progressMessage } = useBridgeTransfer(
+    direction, selectedChain, selectedAsset, amount, routePreview,
+  );
+
+  const canExecute = useMemo(() => {
+    return selectedChain
+      && selectedAsset
+      && amount !== ''
+      && amountError === ''
+      && routePreview !== undefined
+      && (!routePreview.rawRoute || routePreview.txsRequired <= 1)
+      && !isExecuting
+      && !isLoadingRoute
+      && (direction === 'withdraw' || counterpartyStatus === WalletState.Connected);
+  }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, direction, counterpartyStatus]);
+
+  const handleExecute = useCallback(async () => {
+    const success = await executeTransfer();
+    if (success) {
+      setAmount('');
+      setSelectedAsset(undefined);
+      setSelectedChain(undefined);
+    }
+  }, [executeTransfer]);
 
   // Available chains (EVM chains will be added in Epic 5)
   const availableChains = useMemo(() => getAllowedCosmosChains(), []);
@@ -359,12 +393,36 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
         <Text fontSize="sm" color="red.500">{routeError}</Text>
       )}
 
-      {/* Execute Button — disabled in this epic */}
+      {/* Multi-tx warning */}
+      {routePreview && routePreview.txsRequired > 1 && (
+        <Box p="3" bg="orange.500/10" borderRadius="md" borderWidth="1px" borderColor="orange.500/30">
+          <Text fontSize="sm" color="orange.600">
+            This route requires multiple steps and is not supported yet. Try a different asset or amount.
+          </Text>
+        </Box>
+      )}
+
+      {/* Wallet connection prompt for deposits */}
+      {direction === 'deposit' && selectedChain && counterpartyStatus !== WalletState.Connected && (
+        <VStack gap="3">
+          <Text fontSize="sm" color="fg.muted">
+            Connect your wallet on {selectedChain.displayName} to continue
+          </Text>
+          <Button size="sm" w="full" colorPalette={accentColor} onClick={connectCounterparty}>
+            Connect to {selectedChain.displayName}
+          </Button>
+        </VStack>
+      )}
+
+      {/* Execute Button */}
       <Button
         size="sm"
         w="full"
         colorPalette={accentColor}
-        disabled
+        disabled={!canExecute}
+        loading={isExecuting}
+        loadingText={progressMessage || "Transferring..."}
+        onClick={handleExecute}
       >
         Transfer
       </Button>

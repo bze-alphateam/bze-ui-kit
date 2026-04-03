@@ -81,6 +81,7 @@ export { canDepositFromIBC, canSendToIBC, denomOnFirstHopChainFromTrace, getIbcT
 export {
     buildRoutePreview, buildIbcRoutePreview, formatDuration,
     findIbcDataForChain, generateTxRecordId,
+    convertSkipMsgToEncodeObject, resolveAddressesForRoute, chainIdToChainName,
 } from './utils/cross_chain';
 export {
     calculateUserPoolData, calculatePoolOppositeAmount, calculatePoolPrice,
@@ -211,6 +212,9 @@ export { useSDKTx, useBZETx, useIBCTx, TxStatus } from './hooks/useTx';
 export type { TxOptions, TxSuccessResponse } from './hooks/useTx';
 export { useValidatorLogos } from './hooks/useValidatorLogos';
 export { useBridgeRoute } from './hooks/useBridgeRoute';
+export { useBridgeTransfer } from './hooks/useBridgeTransfer';
+export { useIbcBridgeTransfer } from './hooks/useIbcBridgeTransfer';
+export { useSkipBridgeTransfer } from './hooks/useSkipBridgeTransfer';
 
 // === Components ===
 export { SettingsProvider } from './components/settings-provider';
