@@ -1,6 +1,6 @@
 {
   "name": "@bze/bze-ui-kit",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Shared utilities, hooks, query clients, and services for BZE ecosystem apps",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
