@@ -1,6 +1,9 @@
 import {EncodeObject, StdFee} from "@bze/bzejs/types";
 import {TxBody, SignerInfo} from "@bze/bzejs/cosmos/tx/v1beta1/tx";
 import {useChain} from "@interchain-kit/react";
+import {CosmosWallet} from "@interchain-kit/core";
+import {DirectSigner} from "@interchainjs/cosmos/signers/direct-signer";
+import {createCosmosQueryClient} from "@interchainjs/cosmos";
 import {getChainExplorerURL, getChainName, getGasMultiplier, getGasPrice, getNonNativeGasMultiplier} from "../constants/chain";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
@@ -16,6 +19,7 @@ import {useFeeTokens} from "./useFeeTokens";
 import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
 import {toBigNumber} from "../utils/amount";
 import {coins} from "../utils/coins";
+import {registerBzeEncoders} from "../utils/signing_client_setup";
 
 // The actual payload delivered to onSuccess — the result of broadcastResult.wait(),
 // which is a TxResponse from @interchainjs/cosmos containing the inclusion details.
@@ -33,6 +37,14 @@ export interface TxOptions {
     onFailure?: (err: string) => void;
     memo?: string;
     progressTrackerTimeout?: number;
+    /**
+     * Force direct (protobuf) sign mode for this transaction instead of the
+     * app-wide preferred sign type. Needed for IBC MsgTransfer: bzejs v3's
+     * amino converter emits fields BZE's chain doesn't know about, and the
+     * signature verification fails with code 4. Direct sign bypasses amino
+     * entirely.
+     */
+    useDirectSign?: boolean;
 }
 
 export enum TxStatus {
@@ -74,9 +86,35 @@ export const useIBCTx = (chainName?: string) => {
 }
 
 const useTx = (chainName: string) => {
-    const {address, disconnect} = useChain(chainName);
+    const {address, disconnect, wallet, chain, getRpcEndpoint} = useChain(chainName);
     const {toast} = useToast();
     const {signingClient, isSigningClientReady, signingClientError} = useSigningClient({chainName: chainName});
+
+    /**
+     * Build a one-off direct-mode signing client, bypassing the app-wide
+     * amino preference. Used only when {@link TxOptions.useDirectSign} is set.
+     */
+    const buildDirectSigningClient = useCallback(async () => {
+        if (!wallet || !chain) throw new Error("Wallet or chain unavailable");
+        // `wallet` from useChain is a ChainWalletStore — use its helper to walk
+        // down to the concrete CosmosWallet instance (Keplr, Leap, WC, etc).
+        const cosmosWallet =
+            typeof (wallet as any).getWalletOfType === "function"
+                ? (wallet as any).getWalletOfType(CosmosWallet)
+                : (wallet as any);
+        if (!cosmosWallet) throw new Error("Cosmos wallet not found");
+        const rpcEndpoint = await getRpcEndpoint();
+        const rpcUrl = typeof rpcEndpoint === "string" ? rpcEndpoint : (rpcEndpoint as any).url;
+        const offlineSigner = await cosmosWallet.getOfflineSigner((chain as any).chainId, "direct");
+        const queryClient = await createCosmosQueryClient(rpcUrl);
+        const directClient: any = new (DirectSigner as any)(offlineSigner, {
+            queryClient,
+            addressPrefix: (chain as any).bech32Prefix,
+            chainId: (chain as any).chainId,
+        });
+        registerBzeEncoders(directClient);
+        return directClient;
+    }, [wallet, chain, getRpcEndpoint]);
     const [progressTrack, setProgressTrack] = useState("")
     const {getDenomsPool} = useLiquidityPools()
     const {feeDenom} = useSettings()
@@ -190,9 +228,17 @@ const useTx = (chainName: string) => {
         let success = false;
         if (signingClient) {
             try {
+                // For IBC MsgTransfer (and similar) we must bypass amino and sign directly,
+                // because bzejs v3's amino converter produces sign-doc bytes that BZE chain
+                // rejects with code 4. Build a one-off direct client; fall back to amino
+                // client for simulation and non-IBC txs.
+                const activeClient: any = options?.useDirectSign
+                    ? await buildDirectSigningClient()
+                    : signingClient;
+
                 const fee = await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
-                const broadcastResult = await (signingClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? getDefaultTxMemo())
+                const broadcastResult = await (activeClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? getDefaultTxMemo())
                 setProgressTrack("Waiting for confirmation")
                 const resp = await broadcastResult.wait();
                 const txHash = resp?.txhash || broadcastResult.transactionHash;
@@ -236,7 +282,7 @@ const useTx = (chainName: string) => {
             setProgressTrack("")
         }, options?.progressTrackerTimeout || 5000)
         return success;
-    }, [address, canUseClient, toast, signingClient, disconnect, getFee, chainName, defaultChainName]);
+    }, [address, canUseClient, toast, signingClient, disconnect, getFee, chainName, defaultChainName, buildDirectSigningClient]);
 
     return {
         tx,

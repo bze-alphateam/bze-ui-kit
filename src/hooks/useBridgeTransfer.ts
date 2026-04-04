@@ -87,6 +87,14 @@ export function useBridgeTransfer(
       return false;
     }
 
+    if (!bzeChain.address || !counterpartyChain.address) {
+      toast.error(
+        "Transfer failed",
+        `Please connect your wallet on ${chain.displayName} first.`,
+      );
+      return false;
+    }
+
     const mechanism = getTransferMechanism(chain.chainName);
 
     const request: CrossChainTransferRequest = {

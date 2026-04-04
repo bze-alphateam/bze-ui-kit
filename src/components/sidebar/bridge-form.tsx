@@ -66,8 +66,8 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
       && (!routePreview.rawRoute || routePreview.txsRequired <= 1)
       && !isExecuting
       && !isLoadingRoute
-      && (direction === 'withdraw' || counterpartyStatus === WalletState.Connected);
-  }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, direction, counterpartyStatus]);
+      && counterpartyStatus === WalletState.Connected;
+  }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, counterpartyStatus]);
 
   const handleExecute = useCallback(async () => {
     const success = await executeTransfer();
@@ -402,11 +402,13 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
         </Box>
       )}
 
-      {/* Wallet connection prompt for deposits */}
-      {direction === 'deposit' && selectedChain && counterpartyStatus !== WalletState.Connected && (
+      {/* Wallet connection prompt — needed in both directions so we have a receiver/sender address */}
+      {selectedChain && counterpartyStatus !== WalletState.Connected && (
         <VStack gap="3">
           <Text fontSize="sm" color="fg.muted">
-            Connect your wallet on {selectedChain.displayName} to continue
+            {direction === 'deposit'
+              ? `Connect your wallet on ${selectedChain.displayName} to continue`
+              : `Connect your wallet on ${selectedChain.displayName} to receive funds`}
           </Text>
           <Button size="sm" w="full" colorPalette={accentColor} onClick={connectCounterparty}>
             Connect to {selectedChain.displayName}
