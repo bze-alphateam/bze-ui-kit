@@ -45,6 +45,16 @@ export interface TxOptions {
      * entirely.
      */
     useDirectSign?: boolean;
+    /**
+     * Let the wallet extension (Keplr/Leap) compute and set the fee. Only
+     * meaningful when {@link useDirectSign} is true. Used for deposits from
+     * foreign chains, where we don't know the correct gas price and letting
+     * the wallet pick it is the safest option. The fee passed to
+     * signAndBroadcast is replaced with an empty zero-gas placeholder and
+     * the underlying offline signer is configured with
+     * `preferNoSetFee: false` so Keplr overrides it.
+     */
+    letWalletSetFee?: boolean;
 }
 
 export enum TxStatus {
@@ -93,8 +103,14 @@ const useTx = (chainName: string) => {
     /**
      * Build a one-off direct-mode signing client, bypassing the app-wide
      * amino preference. Used only when {@link TxOptions.useDirectSign} is set.
+     *
+     * When `letWalletSetFee` is true, the offline signer is wrapped so
+     * `signDirect` calls the underlying wallet with `{ preferNoSetFee: false }`
+     * — this tells Keplr/Leap to replace the fee we submit with its own
+     * recommended fee, which is what we want for foreign-chain deposits where
+     * we don't have gas price knowledge.
      */
-    const buildDirectSigningClient = useCallback(async () => {
+    const buildDirectSigningClient = useCallback(async (letWalletSetFee: boolean = false) => {
         if (!wallet || !chain) throw new Error("Wallet or chain unavailable");
         // `wallet` from useChain is a ChainWalletStore — use its helper to walk
         // down to the concrete CosmosWallet instance (Keplr, Leap, WC, etc).
@@ -105,12 +121,25 @@ const useTx = (chainName: string) => {
         if (!cosmosWallet) throw new Error("Cosmos wallet not found");
         const rpcEndpoint = await getRpcEndpoint();
         const rpcUrl = typeof rpcEndpoint === "string" ? rpcEndpoint : (rpcEndpoint as any).url;
-        const offlineSigner = await cosmosWallet.getOfflineSigner((chain as any).chainId, "direct");
+        const chainId = (chain as any).chainId;
+        const rawOfflineSigner: any = await cosmosWallet.getOfflineSigner(chainId, "direct");
+
+        const offlineSigner = letWalletSetFee
+            ? {
+                getAccounts: rawOfflineSigner.getAccounts.bind(rawOfflineSigner),
+                signDirect: async (signer: string, signDoc: any) => {
+                    // Bypass the app-wide patched signOptions and force the wallet
+                    // to compute its own fee for this transaction.
+                    return cosmosWallet.signDirect(chainId, signer, signDoc, { preferNoSetFee: false });
+                },
+            }
+            : rawOfflineSigner;
+
         const queryClient = await createCosmosQueryClient(rpcUrl);
         const directClient: any = new (DirectSigner as any)(offlineSigner, {
             queryClient,
             addressPrefix: (chain as any).bech32Prefix,
-            chainId: (chain as any).chainId,
+            chainId,
         });
         registerBzeEncoders(directClient);
         return directClient;
@@ -233,10 +262,17 @@ const useTx = (chainName: string) => {
                 // rejects with code 4. Build a one-off direct client; fall back to amino
                 // client for simulation and non-IBC txs.
                 const activeClient: any = options?.useDirectSign
-                    ? await buildDirectSigningClient()
+                    ? await buildDirectSigningClient(options?.letWalletSetFee ?? false)
                     : signingClient;
 
-                const fee = await getFee(msgs, options);
+                // When letting the wallet compute the fee, submit an empty fee amount
+                // with a reasonable gas ceiling — Keplr sees `preferNoSetFee: false` on
+                // the offline signer wrapper and replaces the amount with `gas × its
+                // recommended gas price`. If we pass `gas: "0"` the result is 0, which
+                // is why we hand it a sane ceiling that covers an IBC MsgTransfer.
+                const fee: StdFee = options?.letWalletSetFee
+                    ? { amount: [], gas: "300000" }
+                    : await getFee(msgs, options);
                 setProgressTrack("Signing transaction")
                 const broadcastResult = await (activeClient as any).signAndBroadcast(address, msgs, fee, options?.memo ?? getDefaultTxMemo())
                 setProgressTrack("Waiting for confirmation")
