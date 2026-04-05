@@ -27,6 +27,8 @@ import { sanitizeNumberInput } from '../../utils/number';
 import { formatDuration } from '../../utils/cross_chain';
 import { prettyAmount, uAmountToBigNumberAmount } from '../../utils/amount';
 import { useBalances } from '../../hooks/useBalances';
+import { useCounterpartyBalance } from '../../hooks/useCounterpartyBalance';
+import BigNumber from 'bignumber.js';
 
 interface BridgeFormProps {
   accentColor: string;
@@ -54,7 +56,66 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
     status: counterpartyStatus,
     connect: openWalletPicker,
     wallet: counterpartyWallet,
+    address: counterpartyAddress,
   } = useChain(counterpartyChainName);
+
+  // ─── Source balance resolution ───────────────────────────────────────────
+  // "Source balance" = what the user can actually spend in the current direction.
+  //   • deposit → balance on the counterparty chain (e.g. ATONE on AtomOne)
+  //   • withdraw → balance on BZE of the voucher denom. When bzeDenom isn't
+  //     hardcoded in the allowlist, look it up via the live ibcChains mapping.
+
+  // Resolve withdraw-side denom: prefer allowlist bzeDenom, fall back to a
+  // matching IBC voucher already present in the user's BZE balances.
+  const withdrawDenom = useMemo(() => {
+    if (!selectedAsset) return undefined;
+    if (selectedAsset.bzeDenom) return selectedAsset.bzeDenom;
+    // Best-effort: find a balance on BZE whose IBC trace originates from the
+    // selected counterparty chain and base denom.
+    const match = assetsBalances.find((b) => {
+      return b.IBCData?.counterparty.chainName === selectedChain?.chainName
+        && b.IBCData?.counterparty.baseDenom === selectedAsset.sourceDenom;
+    });
+    return match?.denom;
+  }, [selectedAsset, selectedChain, assetsBalances]);
+
+  // Withdraw — lookup in BZE balances already loaded by the AssetsProvider.
+  const withdrawBalance = useMemo(() => {
+    if (!withdrawDenom) return undefined;
+    return assetsBalances.find(b => b.denom === withdrawDenom);
+  }, [assetsBalances, withdrawDenom]);
+
+  // Deposit — fetch live from the counterparty chain REST endpoint.
+  const {
+    amount: depositRawBalance,
+    status: depositBalanceStatus,
+    refetch: refetchDepositBalance,
+  } = useCounterpartyBalance(
+    direction === 'deposit' ? selectedChain?.chainName : undefined,
+    direction === 'deposit' ? counterpartyAddress : undefined,
+    direction === 'deposit' ? selectedAsset?.sourceDenom : undefined,
+  );
+
+  // Unified "source balance" used by display, validation, and Max button.
+  const sourceBalance = useMemo(() => {
+    if (!selectedAsset) return undefined;
+    if (direction === 'withdraw') {
+      if (!withdrawBalance) return undefined;
+      return {
+        raw: withdrawBalance.amount as unknown as BigNumber,
+        display: uAmountToBigNumberAmount(withdrawBalance.amount, withdrawBalance.decimals),
+        decimals: withdrawBalance.decimals,
+        status: 'ready' as const,
+      };
+    }
+    // deposit
+    return {
+      raw: depositRawBalance,
+      display: uAmountToBigNumberAmount(depositRawBalance, selectedAsset.decimals),
+      decimals: selectedAsset.decimals,
+      status: depositBalanceStatus,
+    };
+  }, [direction, selectedAsset, withdrawBalance, depositRawBalance, depositBalanceStatus]);
 
   // Prefer calling the already-connected wallet's chain-level connect directly
   // (which triggers Keplr/Leap's "enable chain X" prompt). Fall back to opening
@@ -77,6 +138,19 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
     direction, selectedChain, selectedAsset, amount, routePreview,
   );
 
+  // Whether the balance gate lets the transfer proceed.
+  //   ready + >0   → allow
+  //   ready + 0    → block (explicit zero)
+  //   loading      → block transiently
+  //   error        → block (we couldn't verify)
+  //   unsupported  → allow — we informed the user we can't see their balance
+  const balanceAllowsTransfer = useMemo(() => {
+    if (!sourceBalance) return false;
+    if (sourceBalance.status === 'unsupported') return true;
+    if (sourceBalance.status !== 'ready') return false;
+    return sourceBalance.display.isGreaterThan(0);
+  }, [sourceBalance]);
+
   const canExecute = useMemo(() => {
     return selectedChain
       && selectedAsset
@@ -86,8 +160,9 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
       && (!routePreview.rawRoute || routePreview.txsRequired <= 1)
       && !isExecuting
       && !isLoadingRoute
-      && counterpartyStatus === WalletState.Connected;
-  }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, counterpartyStatus]);
+      && counterpartyStatus === WalletState.Connected
+      && balanceAllowsTransfer;
+  }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, counterpartyStatus, balanceAllowsTransfer]);
 
   const handleExecute = useCallback(async () => {
     const success = await executeTransfer();
@@ -95,8 +170,12 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
       setAmount('');
       setSelectedAsset(undefined);
       setSelectedChain(undefined);
+      // Kick the counterparty balance query so a follow-up transfer picks up
+      // the new state on the foreign chain once the relayer delivers.
+      setTimeout(() => refetchDepositBalance(), 4000);
+      setTimeout(() => refetchDepositBalance(), 10000);
     }
-  }, [executeTransfer]);
+  }, [executeTransfer, refetchDepositBalance]);
 
   // Available chains (EVM chains will be added in Epic 5)
   const availableChains = useMemo(() => getAllowedCosmosChains(), []);
@@ -151,27 +230,17 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
   }, []);
 
   const setMaxAmount = useCallback(() => {
-    if (direction !== 'withdraw' || !selectedAsset) return;
-    const balance = assetsBalances.find(b => b.denom === selectedAsset.bzeDenom);
-    if (balance) {
-      const maxAmount = uAmountToBigNumberAmount(balance.amount, balance.decimals);
-      setAmount(maxAmount.toString());
-      setAmountError('');
-    }
-  }, [direction, selectedAsset, assetsBalances]);
+    if (!sourceBalance || sourceBalance.status !== 'ready') return;
+    setAmount(sourceBalance.display.toString());
+    setAmountError('');
+  }, [sourceBalance]);
 
   const validateAmount = useCallback(() => {
-    if (!amount || !selectedAsset) return;
-    if (direction === 'withdraw' && selectedAsset.bzeDenom) {
-      const balance = assetsBalances.find(b => b.denom === selectedAsset.bzeDenom);
-      if (balance) {
-        const available = uAmountToBigNumberAmount(balance.amount, balance.decimals);
-        if (available.isLessThan(amount)) {
-          setAmountError('Insufficient balance');
-        }
-      }
+    if (!amount || !sourceBalance || sourceBalance.status !== 'ready') return;
+    if (sourceBalance.display.isLessThan(amount)) {
+      setAmountError('Insufficient balance');
     }
-  }, [amount, selectedAsset, direction, assetsBalances]);
+  }, [amount, sourceBalance]);
 
   // Fee display
   const feeDisplay = useMemo(() => {
@@ -352,14 +421,59 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
                 onChange={(e) => onAmountChange(e.target.value)}
                 onBlur={validateAmount}
               />
-              {direction === 'withdraw' && (
-                <Button variant="outline" size="sm" onClick={setMaxAmount}>
-                  Max
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={setMaxAmount}
+                disabled={!sourceBalance || sourceBalance.status !== 'ready'}
+              >
+                Max
+              </Button>
             </Group>
             <Field.ErrorText>{amountError}</Field.ErrorText>
           </Field.Root>
+
+          {/* Available-balance hint */}
+          {sourceBalance && (
+            <HStack justify="space-between" mt="1.5">
+              <Text fontSize="xs" color="fg.muted">
+                {direction === 'deposit'
+                  ? `Available on ${selectedChain.displayName}`
+                  : 'Available on BeeZee'}
+              </Text>
+              {sourceBalance.status === 'loading' && (
+                <Text fontSize="xs" color="fg.muted">Loading…</Text>
+              )}
+              {sourceBalance.status === 'ready' && (
+                <Text fontSize="xs" fontFamily="mono">
+                  {prettyAmount(sourceBalance.display)} {selectedAsset.ticker}
+                </Text>
+              )}
+              {sourceBalance.status === 'error' && (
+                <Text fontSize="xs" color="orange.500">Couldn&apos;t fetch</Text>
+              )}
+              {sourceBalance.status === 'unsupported' && (
+                <Text fontSize="xs" color="fg.muted">Unavailable</Text>
+              )}
+            </HStack>
+          )}
+
+          {/* Zero-balance notice (only when we actually know it's zero) */}
+          {sourceBalance?.status === 'ready' && sourceBalance.display.isZero() && (
+            <Text fontSize="xs" color="orange.500" mt="1">
+              {direction === 'deposit'
+                ? `You have no ${selectedAsset.ticker} on ${selectedChain.displayName}.`
+                : `You have no ${selectedAsset.ticker} on BeeZee.`}
+            </Text>
+          )}
+
+          {/* REST endpoint missing — we can't show the balance */}
+          {sourceBalance?.status === 'unsupported' && direction === 'deposit' && (
+            <Text fontSize="xs" color="fg.muted" mt="1">
+              We can&apos;t see your balance on {selectedChain.displayName} right now.
+              Please double-check it in your wallet before transferring.
+            </Text>
+          )}
         </Box>
       )}
 

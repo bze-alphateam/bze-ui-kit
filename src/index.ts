@@ -202,6 +202,8 @@ export { useAssetPrice } from './hooks/usePrices';
 export { useSettings } from './hooks/useSettings';
 export { useBalances, useBalance } from './hooks/useBalances';
 export type { AssetBalance } from './hooks/useBalances';
+export { useCounterpartyBalance } from './hooks/useCounterpartyBalance';
+export type { UseCounterpartyBalanceResult, CounterpartyBalanceStatus } from './hooks/useCounterpartyBalance';
 export { useEpochs, useEpochsManager } from './hooks/useEpochs';
 export { useLiquidityPools, useAssetLiquidityPools, useLiquidityPool } from './hooks/useLiquidityPools';
 export { useAssetsValue } from './hooks/useAssetsValue';
