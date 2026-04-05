@@ -50,7 +50,27 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
 
   // Wallet connections
   const counterpartyChainName = selectedChain?.chainName ?? getChainName();
-  const { status: counterpartyStatus, connect: connectCounterparty } = useChain(counterpartyChainName);
+  const {
+    status: counterpartyStatus,
+    connect: openWalletPicker,
+    wallet: counterpartyWallet,
+  } = useChain(counterpartyChainName);
+
+  // Prefer calling the already-connected wallet's chain-level connect directly
+  // (which triggers Keplr/Leap's "enable chain X" prompt). Fall back to opening
+  // the wallet picker modal when no wallet is connected yet.
+  const handleConnectCounterparty = useCallback(async () => {
+    const ws: any = counterpartyWallet;
+    if (ws && typeof ws.connect === 'function') {
+      try {
+        await ws.connect();
+        return;
+      } catch (e) {
+        console.error('[bridge] counterparty connect failed:', e);
+      }
+    }
+    openWalletPicker();
+  }, [counterpartyWallet, openWalletPicker]);
 
   // Transfer execution
   const { executeTransfer, isExecuting, progressMessage } = useBridgeTransfer(
@@ -410,7 +430,7 @@ export const BridgeForm = ({ accentColor, onClose }: BridgeFormProps) => {
               ? `Connect your wallet on ${selectedChain.displayName} to continue`
               : `Connect your wallet on ${selectedChain.displayName} to receive funds`}
           </Text>
-          <Button size="sm" w="full" colorPalette={accentColor} onClick={connectCounterparty}>
+          <Button size="sm" w="full" colorPalette={accentColor} onClick={handleConnectCounterparty}>
             Connect to {selectedChain.displayName}
           </Button>
         </VStack>

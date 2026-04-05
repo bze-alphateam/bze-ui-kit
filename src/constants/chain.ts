@@ -4,6 +4,7 @@ import {getAssetLists as ibcAssetsList} from "@chain-registry/utils";
 import {BZE_TESTNET_2_SUGGEST_CHAIN, BZE_TESTNET_NETWORK} from "./testnet";
 import {Chain} from "@chain-registry/types";
 import {assetLists, chains, ibcData} from "chain-registry";
+import {getAllowedCosmosChains, isCrossChainEnabled} from "./cross_chain";
 
 export const getChainId = (): string => {
     return process.env.NEXT_PUBLIC_CHAIN_ID || 'beezee-1'
@@ -52,13 +53,22 @@ export const getWalletChainsNames = () => {
     const localChains = getChains()
 
     const envChainsNames = process.env.NEXT_PUBLIC_WALLET_CHAINS_NAMES
-    if (!envChainsNames) {
-        return localChains.filter(c => c.chainId === getChainId())
+    const envNames = envChainsNames ? envChainsNames.split(',') : []
+
+    // Always include the BZE chain plus any chains explicitly listed in env.
+    const baseNames = new Set<string>(envNames)
+    baseNames.add(getChainName())
+
+    // When the cross-chain bridge is enabled, auto-register its allowlist chains
+    // with the wallet provider so `useChain(<bridge chain>)` can connect them
+    // without requiring users to also update NEXT_PUBLIC_WALLET_CHAINS_NAMES.
+    if (isCrossChainEnabled()) {
+        for (const c of getAllowedCosmosChains()) {
+            baseNames.add(c.chainName)
+        }
     }
 
-    const split = envChainsNames.split(',')
-
-    return appChainFirst(localChains.filter(c => split.includes(c.chainName)))
+    return appChainFirst(localChains.filter(c => baseNames.has(c.chainName)))
 }
 
 const appChainFirst = (chains: Chain[]) => {
