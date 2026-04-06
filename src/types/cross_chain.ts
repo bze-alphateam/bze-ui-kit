@@ -89,7 +89,7 @@ export interface SkipMsgsRequest {
   address_list: string[];
   operations: SkipOperation[];
   slippage_tolerance_percent?: string;
-  timeout_seconds?: number;
+  timeout_seconds?: string;
 }
 
 export interface SkipMsgsResponse {
@@ -200,6 +200,7 @@ export interface CrossChainTxRecord {
 export interface SkipChain {
   chain_name: string;
   chain_id: string;
+  pretty_name?: string;
   pfm_enabled: boolean;
   supports_memo: boolean;
   logo_uri?: string;

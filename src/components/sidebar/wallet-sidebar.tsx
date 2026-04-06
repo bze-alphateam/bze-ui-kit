@@ -39,9 +39,10 @@ import {shortNumberFormat} from "../../utils/formatter";
 import {HighlightText} from "../highlight";
 import {useIsInHub} from "@bze/hub-connector";
 import {BridgeForm} from './bridge-form';
+import {BuyForm} from './buy-form';
 import {isCrossChainEnabled} from '../../constants/cross_chain';
 
-type ViewState = 'balances' | 'send' | 'transfer'
+type ViewState = 'balances' | 'send' | 'transfer' | 'buy'
 
 interface WalletSidebarContentProps {
     accentColor?: string
@@ -532,27 +533,39 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
     }, [disconnect])
 
     const renderQuickActions = () => (
-        <HStack gap="2" w="full">
-            <Button
-                flex="1"
-                size="xs"
-                variant="outline"
-                onClick={() => setViewState('send')}
-                disabled={assetsLoading}
-            >
-                Send
-            </Button>
-            {crossChainEnabled && (
+        <VStack gap="2" w="full">
+            <HStack gap="2" w="full">
                 <Button
                     flex="1"
                     size="xs"
                     variant="outline"
-                    onClick={() => setViewState('transfer')}
+                    onClick={() => setViewState('send')}
+                    disabled={assetsLoading}
                 >
-                    Deposit / Withdraw
+                    Send
+                </Button>
+                {crossChainEnabled && (
+                    <Button
+                        flex="1"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => setViewState('transfer')}
+                    >
+                        Deposit / Withdraw
+                    </Button>
+                )}
+            </HStack>
+            {crossChainEnabled && (
+                <Button
+                    w="full"
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setViewState('buy')}
+                >
+                    Buy BZE
                 </Button>
             )}
-        </HStack>
+        </VStack>
     )
 
     const renderBalancesView = () => (
@@ -692,6 +705,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
             {status === WalletState.Connected && viewState === 'balances' && renderBalancesView()}
             {status === WalletState.Connected && viewState === 'send' && <SendForm balances={sortedBalances} onClose={handleCancel} selectedTicker={clickedBalance} accentColor={accentColor}/>}
             {status === WalletState.Connected && crossChainEnabled && viewState === 'transfer' && <BridgeForm accentColor={accentColor} onClose={() => setViewState('balances')} />}
+            {status === WalletState.Connected && crossChainEnabled && viewState === 'buy' && <BuyForm accentColor={accentColor} onClose={() => setViewState('balances')} />}
         </VStack>
     )
 }

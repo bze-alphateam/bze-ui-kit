@@ -17,7 +17,7 @@ import type { SkipRouteResponse } from "../types/cross_chain";
 interface UseSkipBridgeTransferReturn {
   executeSkipTransfer: (
     route: SkipRouteResponse,
-    getAddress: (chainId: string) => string | undefined,
+    getAddress: (chainId: string) => string | undefined | Promise<string | undefined>,
   ) => Promise<{ success: boolean; txHash?: string; chainId?: string; error?: string }>;
   isExecuting: boolean;
   progressMessage: string;
@@ -31,7 +31,7 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
 
   const executeSkipTransfer = useCallback(async (
     route: SkipRouteResponse,
-    getAddress: (chainId: string) => string | undefined,
+    getAddress: (chainId: string) => string | undefined | Promise<string | undefined>,
   ): Promise<{ success: boolean; txHash?: string; chainId?: string; error?: string }> => {
     // Reject multi-tx routes (EVM multi-step handled in Epic 5)
     if (route.txs_required > 1) {
@@ -42,10 +42,11 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
     setProgressMessage('Collecting addresses...');
 
     try {
-      // Build address list
+      // Build address list — getAddress can be async (for intermediate chains
+      // that need a Keplr enable + getKey call to derive the address).
       const addressList: string[] = [];
       for (const chainId of route.required_chain_addresses) {
-        const addr = getAddress(chainId);
+        const addr = await getAddress(chainId);
         if (!addr) {
           toast.error("Transfer failed", `Missing wallet address for chain ${chainId}`);
           return { success: false, error: `Missing address for chain ${chainId}` };
@@ -65,27 +66,35 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
         address_list: addressList,
         operations: route.operations,
         slippage_tolerance_percent: "3",
-        timeout_seconds: 600,
+        timeout_seconds: "600",
       });
 
       if (!msgsResponse?.txs?.length) {
+        console.error('[useSkipBridgeTransfer] empty msgs response:', msgsResponse);
         toast.error("Transfer failed", "Could not build transfer messages.");
         return { success: false, error: "Failed to build transfer messages." };
       }
 
-      // Extract first tx
+      // Extract first tx — Skip may return `msgs` or `cosmos_tx.msgs`
       const skipTx = msgsResponse.txs[0];
-      if (!skipTx.msgs.length) {
+      const txMsgs = skipTx.msgs ?? (skipTx as any).cosmos_tx?.msgs;
+      if (!txMsgs?.length) {
+        console.error('[useSkipBridgeTransfer] no msgs on first tx:', JSON.stringify(skipTx).slice(0, 500));
         toast.error("Transfer failed", "No messages in transaction.");
         return { success: false, error: "No messages in transaction." };
       }
 
       // Convert messages to EncodeObjects
-      const encodeObjects = skipTx.msgs.map(msg => convertSkipMsgToEncodeObject(msg));
+      const encodeObjects = txMsgs.map((msg: any) => convertSkipMsgToEncodeObject(msg));
 
-      // Sign and broadcast
+      // Sign and broadcast. For foreign chains (not BZE), use direct sign
+      // and let the wallet compute the fee — same pattern as IBC deposits.
+      const isForeignChain = skipTx.chain_id !== 'beezee-1';
       setProgressMessage('Waiting for signature...');
-      const success = await tx(encodeObjects, { memo: "" });
+      const success = await tx(encodeObjects, {
+          useDirectSign: isForeignChain,
+          letWalletSetFee: isForeignChain,
+      });
 
       return {
         success,

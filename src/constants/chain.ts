@@ -88,14 +88,15 @@ export const getWalletChainsNames = () => {
     const baseNames = new Set<string>(envNames)
     baseNames.add(getChainName())
 
-    // When the cross-chain bridge is enabled, auto-register every chain BZE
-    // has an IBC channel with (per chain-registry). That way `useChain(chain)`
-    // can connect any of them at runtime without a redeploy when a new IBC
-    // connection is added on the BZE side.
+    // When the cross-chain bridge is enabled, register ALL Cosmos mainnet
+    // chains from chain-registry. This is needed for the "Buy BZE" feature
+    // which uses Skip to swap from ANY Cosmos chain (not just direct IBC
+    // counterparties). ChainProvider registration is just in-memory data —
+    // no network calls happen until the user actually connects a chain.
     if (isCrossChainEnabled()) {
-        for (const name of getBzeIbcCounterparties()) {
-            if (isChainDenied(name)) continue
-            baseNames.add(name)
+        for (const chain of localChains) {
+            if (isChainDenied(chain.chainName)) continue
+            baseNames.add(chain.chainName)
         }
     }
 
