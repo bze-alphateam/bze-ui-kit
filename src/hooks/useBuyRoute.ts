@@ -56,7 +56,6 @@ export function useBuyRoute(
             amount_in: uAmount,
             allow_swaps: true,
         };
-        console.log('[useBuyRoute] requesting route:', routeRequest);
         const route = await skipGetRoute(routeRequest);
 
         // Stale request check

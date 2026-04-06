@@ -70,7 +70,6 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
       });
 
       if (!msgsResponse?.txs?.length) {
-        console.error('[useSkipBridgeTransfer] empty msgs response:', msgsResponse);
         toast.error("Transfer failed", "Could not build transfer messages.");
         return { success: false, error: "Failed to build transfer messages." };
       }
@@ -79,7 +78,6 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
       const skipTx = msgsResponse.txs[0];
       const txMsgs = skipTx.msgs ?? (skipTx as any).cosmos_tx?.msgs;
       if (!txMsgs?.length) {
-        console.error('[useSkipBridgeTransfer] no msgs on first tx:', JSON.stringify(skipTx).slice(0, 500));
         toast.error("Transfer failed", "No messages in transaction.");
         return { success: false, error: "No messages in transaction." };
       }
