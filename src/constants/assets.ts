@@ -11,8 +11,6 @@ export const VERIFIED_ASSETS: { [key: string]: boolean } = {
     "ubze": true,
     "utbz": true,
     "factory/bze13gzq40che93tgfm9kzmkpjamah5nj0j73pyhqk/uvdl": true,
-    "factory/bze15pqjgk4la0mfphwddce00d05n3th3u66n3ptcv/2MARS": true,
-    "factory/bze12gyp30f29zg26nuqrwdhl26ej4q066pt572fhm/GGE": true,
 }
 
 export const EXCLUDED_ASSETS: { [key: string]: boolean } = {
@@ -20,6 +18,22 @@ export const EXCLUDED_ASSETS: { [key: string]: boolean } = {
     "factory/bze1972aqfzdg29ugjln74edx0xvcg4ehvysjptk77/1000000000": true,
     "ibc/689DD6F80E4DBCE14877462B182504037FAEAD0699D5804A7F5CB328D33ED24B": true,
     "factory/bze1f0qgels0eu96ev6a67znu70q7rquy9eragn8nw/ucorey": true,
+}
+
+/**
+ * Assets excluded from the deposit picker. Keyed by BZE-side denom.
+ * Set to `true` to hide the asset from the deposit form.
+ */
+export const DEPOSIT_EXCLUDED_ASSETS: { [key: string]: boolean } = {
+    // Lumen — excluded manually, not caught by the 2-hop heuristic
+    "ibc/693DDB2D9B4260D67C8136C22D837F37488E0FBD81857D8E9C6022332EA26E33": true,
+}
+
+/**
+ * Assets excluded from the withdraw picker. Keyed by BZE-side denom.
+ * Set to `true` to hide the asset from the withdraw form.
+ */
+export const WITHDRAW_EXCLUDED_ASSETS: { [key: string]: boolean } = {
 }
 
 export const STABLE_COINS: { [key: string]: boolean } = {

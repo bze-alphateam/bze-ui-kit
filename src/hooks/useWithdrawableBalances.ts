@@ -7,6 +7,7 @@ import {useAssetsContext} from "./useAssets";
 import {getChainName, getChains} from "../constants/chain";
 import {isAssetDenied, isChainDenied} from "../constants/cross_chain";
 import {isFactoryDenom, isIbcDenom, isLpDenom} from "../utils/denom";
+import {WITHDRAW_EXCLUDED_ASSETS} from "../constants/assets";
 
 /**
  * A chain the user can pick as an IBC destination. Resolved against
@@ -152,6 +153,7 @@ export function useWithdrawableBalances(): UseWithdrawableBalancesResult {
             if (!bal.denom) continue;
             if (isLpDenom(bal.denom)) continue;
             if (isAssetDenied(bal.denom)) continue;
+            if (WITHDRAW_EXCLUDED_ASSETS[bal.denom]) continue;
             if (!bal.amount || bal.amount.isZero() || bal.amount.isNegative()) continue;
 
             // Case 1: IBC voucher — destination is locked to the trace counterparty.

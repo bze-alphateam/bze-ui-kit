@@ -107,6 +107,7 @@ export { subscribeToBlockchainEvents } from './utils/ws_rpc_client';
 export {
     ASSET_TYPE_FACTORY, ASSET_TYPE_IBC, ASSET_TYPE_NATIVE, ASSET_TYPE_LP,
     VERIFIED_ASSETS, EXCLUDED_ASSETS, STABLE_COINS,
+    DEPOSIT_EXCLUDED_ASSETS, WITHDRAW_EXCLUDED_ASSETS,
     getChainNativeAssetDenom, getUSDCDenom
 } from './constants/assets';
 export {
