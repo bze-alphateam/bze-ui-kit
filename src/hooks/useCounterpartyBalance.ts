@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useState} from "react";
 import BigNumber from "bignumber.js";
 import {getChainRestURL} from "../constants/endpoints";
+import {invalidateHealthyRestUrl} from "../utils/endpoint_health";
 
 export type CounterpartyBalanceStatus =
     | 'idle'          // nothing to fetch yet (missing inputs)
@@ -22,10 +23,14 @@ export interface UseCounterpartyBalanceResult {
  * REST endpoint's `/cosmos/bank/v1beta1/balances/{address}/by_denom?denom=…`.
  *
  * Resolution order for the REST URL:
- *   1. Per-chain env var (e.g. NEXT_PUBLIC_REST_URL_NOBLE)
- *   2. chain-registry default REST endpoint
+ *   1. Per-chain env var (e.g. NEXT_PUBLIC_REST_URL_NOBLE) — used as-is
+ *   2. chain-registry's `apis.rest[]` — probed sequentially for liveness,
+ *      result cached for the session via `resolveHealthyRestUrl`
  * If neither is usable, returns status `unsupported` — the UI should surface
- * a friendly "we can't see your balance on X" hint.
+ * a friendly "we can't see your balance on X" hint and still allow the tx.
+ *
+ * On fetch failure the cached endpoint is invalidated so the next attempt
+ * re-probes and potentially picks up a different healthy URL.
  */
 export function useCounterpartyBalance(
     chainName: string | undefined,
@@ -45,34 +50,39 @@ export function useCounterpartyBalance(
             return;
         }
 
-        const restUrl = getChainRestURL(chainName);
-        if (!restUrl) {
-            setStatus('unsupported');
-            setAmount(new BigNumber(0));
-            return;
-        }
-
         let cancelled = false;
         setStatus('loading');
 
-        const url = `${restUrl}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${encodeURIComponent(denom)}`;
-        fetch(url)
-            .then(async (res) => {
+        (async () => {
+            const restUrl = await getChainRestURL(chainName);
+            if (cancelled) return;
+
+            if (!restUrl) {
+                setStatus('unsupported');
+                setAmount(new BigNumber(0));
+                return;
+            }
+
+            const url = `${restUrl}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${encodeURIComponent(denom)}`;
+            try {
+                const res = await fetch(url);
+                if (cancelled) return;
                 if (!res.ok) throw new Error(`REST ${res.status}`);
-                return res.json();
-            })
-            .then((data: { balance?: { amount?: string; denom?: string } }) => {
+                const data: { balance?: { amount?: string; denom?: string } } = await res.json();
                 if (cancelled) return;
                 const raw = data?.balance?.amount ?? '0';
                 setAmount(new BigNumber(raw));
                 setStatus('ready');
-            })
-            .catch((e) => {
+            } catch (e) {
                 if (cancelled) return;
                 console.error(`[useCounterpartyBalance] ${chainName}:`, e);
+                // Endpoint failed mid-session — forget it so the next attempt
+                // re-probes and potentially lands on a different healthy URL.
+                invalidateHealthyRestUrl(chainName);
                 setAmount(new BigNumber(0));
                 setStatus('error');
-            });
+            }
+        })();
 
         return () => {
             cancelled = true;

@@ -4,7 +4,7 @@ import {getAssetLists as ibcAssetsList} from "@chain-registry/utils";
 import {BZE_TESTNET_2_SUGGEST_CHAIN, BZE_TESTNET_NETWORK} from "./testnet";
 import {Chain} from "@chain-registry/types";
 import {assetLists, chains, ibcData} from "chain-registry";
-import {getAllowedCosmosChains, isCrossChainEnabled} from "./cross_chain";
+import {isChainDenied, isCrossChainEnabled} from "./cross_chain";
 
 export const getChainId = (): string => {
     return process.env.NEXT_PUBLIC_CHAIN_ID || 'beezee-1'
@@ -49,6 +49,35 @@ export const getChainByName = (name: string) => {
     return localChains.find(c => c.chainName.toLowerCase() === name.toLowerCase())
 }
 
+/**
+ * Walk chain-registry's ibcData to collect every Cosmos chain BZE has an IBC
+ * channel with. This is the dynamic substitute for the old hardcoded bridge
+ * allowlist — any IBC connection published in chain-registry makes its
+ * counterparty chain pre-registerable with Keplr.
+ */
+const getBzeIbcCounterparties = (): string[] => {
+    const bzeName = getChainName()
+    const names = new Set<string>()
+    try {
+        // chain-registry npm exposes IBC entries in camelCase: chain1.chainName
+        // and chain2.chainName. (The snake_case form belongs to the raw JSON in
+        // the GitHub repo, not the typed npm package.)
+        for (const entry of ibcData as unknown as Array<{
+            chain1?: { chainName?: string };
+            chain2?: { chainName?: string };
+        }>) {
+            const a = entry.chain1?.chainName
+            const b = entry.chain2?.chainName
+            if (!a || !b) continue
+            if (a === bzeName) names.add(b)
+            else if (b === bzeName) names.add(a)
+        }
+    } catch {
+        // ibcData shape drift — fail quiet, bridge degrades to env-only chains.
+    }
+    return Array.from(names)
+}
+
 export const getWalletChainsNames = () => {
     const localChains = getChains()
 
@@ -59,12 +88,14 @@ export const getWalletChainsNames = () => {
     const baseNames = new Set<string>(envNames)
     baseNames.add(getChainName())
 
-    // When the cross-chain bridge is enabled, auto-register its allowlist chains
-    // with the wallet provider so `useChain(<bridge chain>)` can connect them
-    // without requiring users to also update NEXT_PUBLIC_WALLET_CHAINS_NAMES.
+    // When the cross-chain bridge is enabled, auto-register every chain BZE
+    // has an IBC channel with (per chain-registry). That way `useChain(chain)`
+    // can connect any of them at runtime without a redeploy when a new IBC
+    // connection is added on the BZE side.
     if (isCrossChainEnabled()) {
-        for (const c of getAllowedCosmosChains()) {
-            baseNames.add(c.chainName)
+        for (const name of getBzeIbcCounterparties()) {
+            if (isChainDenied(name)) continue
+            baseNames.add(name)
         }
     }
 

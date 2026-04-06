@@ -1,120 +1,55 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AllowedAsset, AllowedChain, RoutePreview, TransferDirection } from '../types/cross_chain';
-import { getTransferMechanism } from '../constants/cross_chain';
-import { BZE_SKIP_CHAIN_ID, BZE_NATIVE_DENOM } from '../constants/cross_chain';
-import { skipGetRoute } from '../query/skip';
-import { buildRoutePreview, buildIbcRoutePreview } from '../utils/cross_chain';
-import { amountToUAmount } from '../utils/amount';
-import { addDebounce, cancelDebounce } from '../utils/debounce';
-
-const DEBOUNCE_KEY = 'bridge-route';
-const DEBOUNCE_MS = 500;
+import {useEffect, useState} from 'react';
+import type {RoutePreview, TransferDirection} from '../types/cross_chain';
+import type {BridgeableAsset} from './useBridgeableAssets';
 
 interface UseBridgeRouteReturn {
-  routePreview: RoutePreview | undefined;
-  isLoading: boolean;
-  error: string;
+    routePreview: RoutePreview | undefined;
+    isLoading: boolean;
+    error: string;
 }
 
+/**
+ * Build a pure-IBC route preview for the selected bridgeable asset + amount.
+ *
+ * At the moment the bridge is IBC-only: output = input, no fees, ~30s
+ * relayer time. Skip-routed deposits will be layered on in a later phase
+ * when we re-introduce the mechanism selection logic.
+ *
+ * The hook still returns the same `RoutePreview` shape as the old
+ * Skip-aware implementation so the form renderer and transfer hook don't
+ * need to change.
+ */
 export function useBridgeRoute(
-  direction: TransferDirection,
-  chain: AllowedChain | undefined,
-  asset: AllowedAsset | undefined,
-  amount: string,
+    direction: TransferDirection,
+    asset: BridgeableAsset | undefined,
+    amount: string,
 ): UseBridgeRouteReturn {
-  const [routePreview, setRoutePreview] = useState<RoutePreview | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const requestIdRef = useRef(0);
+    const [routePreview, setRoutePreview] = useState<RoutePreview | undefined>();
+    const [isLoading] = useState(false);
+    const [error] = useState('');
 
-  const fetchRoute = useCallback(async (
-    dir: TransferDirection,
-    ch: AllowedChain,
-    ast: AllowedAsset,
-    amt: string,
-    reqId: number,
-  ) => {
-    const mechanism = getTransferMechanism(ch.chainName);
-
-    // Pure IBC — no API call needed
-    if (mechanism === 'ibc') {
-      setRoutePreview(buildIbcRoutePreview(amt, ast));
-      setIsLoading(false);
-      setError('');
-      return;
-    }
-
-    // Skip-powered route
-    const uAmount = amountToUAmount(amt, ast.decimals);
-    const sourceDenom = ast.skipDenom || ast.sourceDenom;
-    const bzeDenom = ast.bzeDenom || BZE_NATIVE_DENOM;
-
-    const request = dir === 'deposit'
-      ? {
-          source_asset_denom: sourceDenom,
-          source_asset_chain_id: ch.skipChainId,
-          dest_asset_denom: bzeDenom,
-          dest_asset_chain_id: BZE_SKIP_CHAIN_ID,
-          amount_in: uAmount,
+    useEffect(() => {
+        if (!asset || !amount || amount === '0' || parseFloat(amount) <= 0) {
+            setRoutePreview(undefined);
+            return;
         }
-      : {
-          source_asset_denom: bzeDenom,
-          source_asset_chain_id: BZE_SKIP_CHAIN_ID,
-          dest_asset_denom: sourceDenom,
-          dest_asset_chain_id: ch.skipChainId,
-          amount_in: uAmount,
-        };
+        setRoutePreview({
+            estimatedOutput: amount,
+            estimatedOutputTicker: asset.bzeAsset.ticker,
+            estimatedDurationSeconds: 30,
+            fees: [],
+            txsRequired: 1,
+            mechanism: 'ibc',
+            warning: undefined,
+            rawRoute: undefined,
+        });
+        // direction is currently unused — IBC in/out looks the same in the
+        // preview — but we keep it in the signature so the form can pass it
+        // through unchanged and Phase 2 (Skip) can differentiate deposits.
+        void direction;
+    }, [asset, amount, direction]);
 
-    const route = await skipGetRoute(request);
-
-    // Stale request check
-    if (reqId !== requestIdRef.current) return;
-
-    if (!route) {
-      setRoutePreview(undefined);
-      setError('No route available for this transfer');
-      setIsLoading(false);
-      return;
-    }
-
-    const destAsset = dir === 'deposit'
-      ? { ...ast, ticker: ast.bzeDenom ? ast.ticker : 'BZE', decimals: ast.bzeDenom ? ast.decimals : 6 }
-      : ast;
-
-    setRoutePreview(buildRoutePreview(route, destAsset, mechanism));
-    setError('');
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    // Clear state if inputs are missing or amount is empty/zero
-    if (!chain || !asset || !amount || amount === '0' || parseFloat(amount) <= 0) {
-      setRoutePreview(undefined);
-      setError('');
-      setIsLoading(false);
-      cancelDebounce(DEBOUNCE_KEY);
-      return;
-    }
-
-    const reqId = ++requestIdRef.current;
-    setIsLoading(true);
-    setError('');
-
-    addDebounce(DEBOUNCE_KEY, DEBOUNCE_MS, () => {
-      fetchRoute(direction, chain, asset, amount, reqId).catch((e) => {
-        if (reqId !== requestIdRef.current) return;
-        console.error('[useBridgeRoute] error:', e);
-        setError('Could not reach the network. Please check your connection.');
-        setIsLoading(false);
-      });
-    });
-
-    return () => {
-      cancelDebounce(DEBOUNCE_KEY);
-    };
-  }, [direction, chain, asset, amount, fetchRoute]);
-
-  return { routePreview, isLoading, error };
+    return {routePreview, isLoading, error};
 }

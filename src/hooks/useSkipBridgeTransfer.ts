@@ -1,16 +1,21 @@
 'use client'
 
+/**
+ * Phase 2 entry point — reserved for Skip-routed transfers. Currently not
+ * wired into the bridge form, which runs in IBC-only mode. Kept here so the
+ * Skip integration can be re-enabled without re-deriving the plumbing.
+ */
+
 import { useCallback, useState } from "react";
 import { useSDKTx } from "./useTx";
 import { useToast } from "./useToast";
 import { skipGetMsgs } from "../query/skip";
-import { convertSkipMsgToEncodeObject, chainIdToChainName } from "../utils/cross_chain";
+import { convertSkipMsgToEncodeObject } from "../utils/cross_chain";
 import { getChainName } from "../constants/chain";
-import type { CrossChainTransferRequest, SkipRouteResponse } from "../types/cross_chain";
+import type { SkipRouteResponse } from "../types/cross_chain";
 
 interface UseSkipBridgeTransferReturn {
   executeSkipTransfer: (
-    request: CrossChainTransferRequest,
     route: SkipRouteResponse,
     getAddress: (chainId: string) => string | undefined,
   ) => Promise<{ success: boolean; txHash?: string; chainId?: string; error?: string }>;
@@ -25,7 +30,6 @@ export function useSkipBridgeTransfer(signingChainName?: string): UseSkipBridgeT
   const [progressMessage, setProgressMessage] = useState('');
 
   const executeSkipTransfer = useCallback(async (
-    request: CrossChainTransferRequest,
     route: SkipRouteResponse,
     getAddress: (chainId: string) => string | undefined,
   ): Promise<{ success: boolean; txHash?: string; chainId?: string; error?: string }> => {

@@ -1,131 +1,138 @@
 'use client'
 
-import { useCallback, useMemo } from "react";
-import { useChain } from "@interchain-kit/react";
-import type {
-  AllowedAsset, AllowedChain, CrossChainTransferRequest,
-  RoutePreview, TransferDirection,
-} from "../types/cross_chain";
-import { getTransferMechanism, BZE_SKIP_CHAIN_ID } from "../constants/cross_chain";
-import { getChainName, getChainByChainId } from "../constants/chain";
-import { useIbcBridgeTransfer } from "./useIbcBridgeTransfer";
-import { useSkipBridgeTransfer } from "./useSkipBridgeTransfer";
-import { useIBCChains } from "./useAssets";
-import { findIbcDataForChain } from "../utils/cross_chain";
-import { useToast } from "./useToast";
+import {useCallback, useMemo} from "react";
+import {useChain} from "@interchain-kit/react";
+import type {RoutePreview} from "../types/cross_chain";
+import type {BridgeableAsset} from "./useBridgeableAssets";
+import type {WithdrawableAsset, WithdrawDestinationChain} from "./useWithdrawableBalances";
+import {getChainName} from "../constants/chain";
+import {useIbcBridgeTransfer, type IbcTransferPlan} from "./useIbcBridgeTransfer";
+import {useToast} from "./useToast";
 
-interface UseBridgeTransferReturn {
-  executeTransfer: () => Promise<boolean>;
-  isExecuting: boolean;
-  progressMessage: string;
+interface UseBridgeTransferDepositInput {
+    direction: 'deposit';
+    asset: BridgeableAsset | undefined;
+    amount: string;
+    routePreview: RoutePreview | undefined;
 }
 
-export function useBridgeTransfer(
-  direction: TransferDirection,
-  chain: AllowedChain | undefined,
-  asset: AllowedAsset | undefined,
-  amount: string,
-  routePreview: RoutePreview | undefined,
-): UseBridgeTransferReturn {
-  const { toast } = useToast();
+interface UseBridgeTransferWithdrawInput {
+    direction: 'withdraw';
+    asset: WithdrawableAsset | undefined;
+    destination: WithdrawDestinationChain | undefined;
+    amount: string;
+    routePreview: RoutePreview | undefined;
+}
 
-  // Determine source chain for signing
-  const sourceChainName = useMemo(() => {
-    if (!chain) return getChainName();
-    return direction === 'deposit' ? chain.chainName : getChainName();
-  }, [direction, chain]);
+type UseBridgeTransferInput = UseBridgeTransferDepositInput | UseBridgeTransferWithdrawInput;
 
-  // Wallet addresses
-  const bzeChain = useChain(getChainName());
-  const counterpartyChain = useChain(chain?.chainName ?? getChainName());
+interface UseBridgeTransferReturn {
+    executeTransfer: () => Promise<boolean>;
+    isExecuting: boolean;
+    progressMessage: string;
+}
 
-  // IBC data
-  const { ibcChains } = useIBCChains();
-  const ibcData = useMemo(() => {
-    if (!chain) return undefined;
-    return findIbcDataForChain(ibcChains, chain.chainName);
-  }, [ibcChains, chain]);
+/**
+ * Orchestrates an IBC deposit or withdraw. Deposit flows work off a
+ * `BridgeableAsset` (discovered asset on BZE with a fixed counterparty);
+ * withdraw flows work off a `WithdrawableAsset` plus the user's chosen
+ * destination chain (which is locked for IBC vouchers and free for BZE/factory
+ * tokens). Both collapse into the same `IbcTransferPlan` that
+ * `useIbcBridgeTransfer` consumes.
+ */
+export function useBridgeTransfer(input: UseBridgeTransferInput): UseBridgeTransferReturn {
+    const {toast} = useToast();
 
-  // Transfer hooks
-  const ibcTransfer = useIbcBridgeTransfer(sourceChainName);
+    // Determine the signing chain: deposits sign on the foreign source chain,
+    // withdraws always sign on BZE.
+    const signingChainName = useMemo(() => {
+        if (input.direction === 'deposit') {
+            return input.asset?.counterparty.chainName ?? getChainName();
+        }
+        return getChainName();
+    }, [input]);
 
-  // For Skip, the signing chain comes from the route's first tx.
-  // For deposits, it's the counterparty chain. For withdrawals, it's BZE.
-  const skipSigningChainName = useMemo(() => {
-    if (!routePreview?.rawRoute) return sourceChainName;
-    // The first tx's chain_id tells us where to sign
-    // We don't have the msgs yet, so use the source chain from the route
-    const sourceChainId = routePreview.rawRoute.source_asset_chain_id;
-    const resolved = getChainByChainId(sourceChainId);
-    return resolved?.chainName ?? sourceChainName;
-  }, [routePreview, sourceChainName]);
+    const bzeChain = useChain(getChainName());
 
-  const skipTransfer = useSkipBridgeTransfer(skipSigningChainName);
+    // Counterparty chain depends on direction:
+    //   deposit  → the asset's fixed counterparty
+    //   withdraw → whichever chain the user selected from the destination picker
+    const counterpartyChainName = useMemo(() => {
+        if (input.direction === 'deposit') return input.asset?.counterparty.chainName ?? getChainName();
+        return input.destination?.chainName ?? getChainName();
+    }, [input]);
+    const counterpartyChain = useChain(counterpartyChainName);
 
-  // Address resolver for Skip routes
-  const getAddressForChainId = useCallback((chainId: string): string | undefined => {
-    if (chainId === BZE_SKIP_CHAIN_ID || chainId === 'beezee-1') {
-      return bzeChain.address;
-    }
-    if (chain && chainId === chain.skipChainId) {
-      return counterpartyChain.address;
-    }
-    // For intermediate chains, try resolving via chain registry
-    const resolved = getChainByChainId(chainId);
-    if (resolved?.chainName === getChainName()) {
-      return bzeChain.address;
-    }
-    if (resolved?.chainName === chain?.chainName) {
-      return counterpartyChain.address;
-    }
-    return undefined;
-  }, [bzeChain.address, counterpartyChain.address, chain]);
+    const ibcTransfer = useIbcBridgeTransfer(signingChainName);
 
-  const executeTransfer = useCallback(async (): Promise<boolean> => {
-    if (!chain || !asset || !amount) {
-      toast.error("Transfer failed", "Missing transfer parameters.");
-      return false;
-    }
+    const executeTransfer = useCallback(async (): Promise<boolean> => {
+        if (!input.amount) {
+            toast.error("Transfer failed", "Missing amount.");
+            return false;
+        }
+        if (!input.asset) {
+            toast.error("Transfer failed", "Missing asset.");
+            return false;
+        }
+        if (!bzeChain.address || !counterpartyChain.address) {
+            const counterpartyDisplay =
+                input.direction === 'deposit'
+                    ? input.asset.counterparty.displayName
+                    : input.destination?.displayName ?? 'the destination chain';
+            toast.error(
+                "Transfer failed",
+                `Please connect your wallet on ${counterpartyDisplay} first.`,
+            );
+            return false;
+        }
 
-    if (!bzeChain.address || !counterpartyChain.address) {
-      toast.error(
-        "Transfer failed",
-        `Please connect your wallet on ${chain.displayName} first.`,
-      );
-      return false;
-    }
+        let plan: IbcTransferPlan;
 
-    const mechanism = getTransferMechanism(chain.chainName);
+        if (input.direction === 'deposit') {
+            // Deposit: sign on the counterparty chain, send the base denom on
+            // that chain through the counterparty-side channel, receiver = BZE.
+            const {asset} = input;
+            plan = {
+                isDeposit: true,
+                sourceChannel: asset.ibcData.counterparty.channelId,
+                tokenDenom: asset.ibcData.counterparty.baseDenom,
+                decimals: asset.bzeAsset.decimals,
+                sourceAddress: counterpartyChain.address,
+                destAddress: bzeChain.address,
+                amount: input.amount,
+            };
+        } else {
+            // Withdraw: sign on BZE, send the BZE-side denom through the
+            // BZE-side channel for the chosen destination. For IBC vouchers
+            // the BZE-side channel is the one the voucher arrived on; for
+            // BZE-native / factory tokens it's whichever channel reaches the
+            // user's chosen destination. Both values already live on the
+            // WithdrawDestinationChain, so the plan-building step is uniform.
+            if (!input.destination) {
+                toast.error("Transfer failed", "Please choose a destination chain.");
+                return false;
+            }
+            plan = {
+                isDeposit: false,
+                sourceChannel: input.destination.bzeSideChannelId,
+                tokenDenom: input.asset.balance.denom,
+                decimals: input.asset.balance.decimals,
+                sourceAddress: bzeChain.address,
+                destAddress: counterpartyChain.address,
+                amount: input.amount,
+            };
+        }
 
-    const request: CrossChainTransferRequest = {
-      direction,
-      sourceChain: direction === 'deposit' ? chain : { chainName: getChainName(), displayName: 'BeeZee', logo: '', addressPrefix: 'bze', skipChainId: BZE_SKIP_CHAIN_ID, isEvm: false, hasDirectIbc: true, assets: [] },
-      destChain: direction === 'deposit' ? { chainName: getChainName(), displayName: 'BeeZee', logo: '', addressPrefix: 'bze', skipChainId: BZE_SKIP_CHAIN_ID, isEvm: false, hasDirectIbc: true, assets: [] } : chain,
-      asset,
-      amount,
-      sourceAddress: direction === 'deposit' ? (counterpartyChain.address ?? '') : (bzeChain.address ?? ''),
-      destAddress: direction === 'deposit' ? (bzeChain.address ?? '') : (counterpartyChain.address ?? ''),
-      mechanism,
+        return ibcTransfer.executeIbcTransfer(plan);
+    }, [input, bzeChain.address, counterpartyChain.address, ibcTransfer, toast]);
+
+    // routePreview is accepted for signature parity with the upcoming Skip
+    // phase — today every transfer is pure IBC, so we don't branch on it.
+    void input.routePreview;
+
+    return {
+        executeTransfer,
+        isExecuting: ibcTransfer.isExecuting,
+        progressMessage: ibcTransfer.progressMessage,
     };
-
-    if (mechanism === 'ibc' && ibcData) {
-      return ibcTransfer.executeIbcTransfer(request, ibcData);
-    }
-
-    if (mechanism === 'skip' && routePreview?.rawRoute) {
-      const result = await skipTransfer.executeSkipTransfer(request, routePreview.rawRoute, getAddressForChainId);
-      if (!result.success && result.error) {
-        toast.error("Transfer failed", result.error);
-      }
-      return result.success;
-    }
-
-    toast.error("Transfer failed", "Could not determine transfer method.");
-    return false;
-  }, [chain, asset, amount, direction, bzeChain.address, counterpartyChain.address, ibcData, ibcTransfer, skipTransfer, routePreview, getAddressForChainId, toast]);
-
-  const isExecuting = ibcTransfer.isExecuting || skipTransfer.isExecuting;
-  const progressMessage = ibcTransfer.progressMessage || skipTransfer.progressMessage;
-
-  return { executeTransfer, isExecuting, progressMessage };
 }

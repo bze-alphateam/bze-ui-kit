@@ -1,3 +1,5 @@
+import {getChains} from "./chain";
+import {resolveHealthyRestUrl} from "../utils/endpoint_health";
 
 export function getRestURL(): string {
     return process.env.NEXT_PUBLIC_REST_URL || '';
@@ -60,16 +62,12 @@ export const getAggregatorHost = (): string => {
 }
 
 /**
- * Resolve a REST URL for an arbitrary chain name. Checks our per-chain env
- * vars first (NEXT_PUBLIC_REST_URL_*) and falls back to the chain-registry
- * `apis.rest[0]` address when no env override is configured. Returns an
- * empty string when neither source produces a usable URL.
- *
- * NOTE: This is a sync resolver used by cross-chain balance fetching. It does
- * not validate that the endpoint is reachable — the caller should handle
- * network errors and show a degraded UI.
+ * Return the env-configured REST URL for a chain (if any). Env-provided URLs
+ * are trusted — they skip the health-check path because if the operator sets
+ * one explicitly, they want a loud failure rather than a silent fallback to
+ * chain-registry when their endpoint hiccups.
  */
-export function getChainRestURL(chainName: string): string {
+export function getEnvRestURL(chainName: string): string {
     const envMap: Record<string, string | undefined> = {
         archway: process.env.NEXT_PUBLIC_REST_URL_ARCHWAY,
         osmosis: process.env.NEXT_PUBLIC_REST_URL_OSMOSIS,
@@ -78,19 +76,38 @@ export function getChainRestURL(chainName: string): string {
         omniflixhub: process.env.NEXT_PUBLIC_REST_URL_FLIX,
         atomone: process.env.NEXT_PUBLIC_REST_URL_ATOMONE,
     };
-    const envValue = envMap[chainName];
-    if (envValue) return envValue.replace(/\/$/, '');
+    const value = envMap[chainName];
+    return value ? value.replace(/\/$/, '') : '';
+}
 
-    // Fallback: chain-registry. Imported lazily to keep this module free of
-    // side effects in non-browser contexts.
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const {chains: registryChains} = require('chain-registry') as { chains: Array<{ chain_name?: string; chainName?: string; apis?: { rest?: Array<{ address: string }> } }> };
-        const chain = registryChains.find(c => (c.chainName || c.chain_name) === chainName);
-        const rest = chain?.apis?.rest?.[0]?.address;
-        if (rest) return rest.replace(/\/$/, '');
-    } catch {
-        // ignore
-    }
-    return '';
+/**
+ * Collect every REST URL chain-registry publishes for a chain, in the order
+ * the registry lists them. Uses the same `getChains()` helper that already
+ * handles testnet mode — going through `require('chain-registry')` directly
+ * is unreliable in the tsup-built browser bundle.
+ */
+export function getRegistryRestURLs(chainName: string): string[] {
+    const all = getChains() as unknown as Array<{
+        chainName?: string;
+        apis?: { rest?: Array<{ address: string }> };
+    }>;
+    const chain = all.find(c => (c.chainName || '').toLowerCase() === chainName.toLowerCase());
+    const rest = chain?.apis?.rest ?? [];
+    return rest.map(r => r.address).filter(Boolean);
+}
+
+/**
+ * Resolve a healthy REST URL for an arbitrary chain name. Order:
+ *   1. `NEXT_PUBLIC_REST_URL_<CHAIN>` (trusted, no health check)
+ *   2. `chain-registry`'s `apis.rest[]`, first one that passes a live probe
+ *      (see `resolveHealthyRestUrl`, 2.5s timeout, sequential fallback)
+ * Returns an empty string when neither source produces a reachable URL — the
+ * caller should surface a "we can't reach X" hint and still allow the tx.
+ *
+ * NOTE: async. `useCounterpartyBalance` awaits this before calling /balances.
+ */
+export async function getChainRestURL(chainName: string): Promise<string> {
+    const envUrl = getEnvRestURL(chainName);
+    if (envUrl) return envUrl;
+    return resolveHealthyRestUrl(chainName, getRegistryRestURLs(chainName));
 }

@@ -1,42 +1,7 @@
-// ─── Allowlist Configuration Types ───
-
-export interface AllowedChain {
-  chainName: string;           // chain-registry name (e.g., "noble", "osmosis", "atomone")
-  displayName: string;         // User-friendly name (e.g., "Noble", "Osmosis", "AtomOne")
-  logo: string;                // URL to chain logo
-  addressPrefix: string;       // Bech32 prefix (e.g., "noble", "osmo") or "0x" for EVM
-  skipChainId: string;         // Skip API chain ID (e.g., "noble-1"). Empty string if not on Skip.
-  isEvm: boolean;              // Whether this is an EVM chain
-  evmChainId?: number;         // EVM chain ID (e.g., 1 for Ethereum). Only set when isEvm=true.
-  hasDirectIbc: boolean;       // Whether BZE has a direct IBC connection to this chain
-  assets: AllowedAsset[];      // Permitted assets on this chain
-}
-
-export interface AllowedAsset {
-  sourceDenom: string;         // Denom on source chain (e.g., "uusdc" on Noble, "uosmo" on Osmosis)
-  displayName: string;         // User-friendly name (e.g., "USD Coin")
-  ticker: string;              // Short ticker (e.g., "USDC", "OSMO")
-  logo: string;                // URL to asset logo
-  decimals: number;            // Exponent (e.g., 6 for USDC, 18 for ETH)
-  bzeDenom: string;            // IBC denom on BZE chain (e.g., "ibc/6490A7..."). Empty if no direct representation.
-  skipDenom?: string;          // Override denom for Skip API queries (if different from sourceDenom)
-}
-
 // ─── Transfer Flow Types ───
 
 export type TransferDirection = 'deposit' | 'withdraw';
 export type TransferMechanism = 'ibc' | 'skip';
-
-export interface CrossChainTransferRequest {
-  direction: TransferDirection;
-  sourceChain: AllowedChain;
-  destChain: AllowedChain;     // For deposit: BZE is dest. For withdraw: BZE is source.
-  asset: AllowedAsset;
-  amount: string;              // Human-readable amount (e.g., "100.5")
-  sourceAddress: string;
-  destAddress: string;
-  mechanism: TransferMechanism;
-}
 
 // ─── Route Preview (UI-friendly) ───
 
