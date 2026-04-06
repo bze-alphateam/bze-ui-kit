@@ -1,6 +1,6 @@
 'use client'
 
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState} from 'react';
 import {
     Box,
     Button,
@@ -17,8 +17,7 @@ import {
 import {useChain} from '@interchain-kit/react';
 import {WalletState} from '@interchain-kit/core';
 import {TokenLogo} from '../token-logo';
-import {useBridgeableAssets, type BridgeableAsset, type BridgeableChain} from '../../hooks/useBridgeableAssets';
-import {useBridgeRoute} from '../../hooks/useBridgeRoute';
+import {useBridgeableAssets, type BridgeableAsset} from '../../hooks/useBridgeableAssets';
 import {useBridgeTransfer} from '../../hooks/useBridgeTransfer';
 import {useCounterpartyBalance} from '../../hooks/useCounterpartyBalance';
 import {sanitizeNumberInput} from '../../utils/number';
@@ -32,42 +31,48 @@ interface DepositFormProps {
 /**
  * Deposit flow: move an asset from a foreign chain onto BeeZee.
  *
- * The picker is driven by `useBridgeableAssets`, which derives the set of
- * depositable assets from chain-registry + BZE's existing IBC traces — no
- * hardcoded allowlist. Each counterparty chain the user selects exposes the
- * assets that can arrive on BZE from that chain.
+ * Asset-first picker mirroring the withdraw form. The flat list contains every
+ * BZE IBC voucher with a complete trace (1-hop native assets from direct
+ * counterparties). Each asset has exactly one source chain, so no network
+ * picker is needed — the source is shown as a read-only label after selection.
  */
 export const DepositForm = ({accentColor}: DepositFormProps) => {
-    const [selectedChain, setSelectedChain] = useState<BridgeableChain | undefined>();
     const [selectedAsset, setSelectedAsset] = useState<BridgeableAsset | undefined>();
     const [amount, setAmount] = useState('');
     const [amountError, setAmountError] = useState('');
 
-    const {chains: bridgeableChains, isLoading: isLoadingAssets} = useBridgeableAssets();
+    const {assets: bridgeableAssets, isLoading: isLoadingAssets} = useBridgeableAssets();
 
-    const {routePreview, isLoading: isLoadingRoute, error: routeError} = useBridgeRoute(
-        'deposit',
-        selectedAsset,
-        amount,
-    );
+    // ─── Asset picker collection (flat list, sorted by ticker) ─────────────
+    const assetsCollection = useMemo(() => {
+        return createListCollection({
+            items: bridgeableAssets.map(a => ({
+                label: a.bzeAsset.ticker,
+                value: a.bzeAsset.denom,
+                logo: a.bzeAsset.logo,
+                displayName: a.bzeAsset.name,
+                chainDisplayName: a.counterparty.displayName,
+            })),
+        });
+    }, [bridgeableAssets]);
 
     // ─── Counterparty wallet ───────────────────────────────────────────────
-    const counterpartyChainName = selectedChain?.chainName;
+    const sourceChainName = selectedAsset?.counterparty.chainName ?? 'beezee';
     const {
-        status: counterpartyStatus,
+        status: sourceWalletStatus,
         connect: openWalletPicker,
-        wallet: counterpartyWallet,
-        address: counterpartyAddress,
-    } = useChain(counterpartyChainName ?? 'beezee');
+        wallet: sourceWallet,
+        address: sourceAddress,
+    } = useChain(sourceChainName);
 
-    // ─── Live balance on counterparty chain (via REST) ─────────────────────
+    // ─── Live balance on source chain (via REST) ───────────────────────────
     const {
         amount: depositRawBalance,
         status: depositBalanceStatus,
         refetch: refetchDepositBalance,
     } = useCounterpartyBalance(
-        selectedChain?.chainName,
-        counterpartyAddress,
+        selectedAsset?.counterparty.chainName,
+        sourceAddress,
         selectedAsset?.ibcData.counterparty.baseDenom,
     );
 
@@ -80,19 +85,35 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
         };
     }, [selectedAsset, depositRawBalance, depositBalanceStatus]);
 
-    const handleConnectCounterparty = useCallback(async () => {
-        const ws: any = counterpartyWallet;
+    const handleConnectSource = useCallback(async () => {
+        const ws: any = sourceWallet;
         if (ws && typeof ws.connect === 'function') {
             try {
                 await ws.connect();
                 return;
             } catch (e) {
-                console.error('[bridge] counterparty connect failed:', e);
+                console.error('[bridge] source connect failed:', e);
             }
         }
         openWalletPicker();
-    }, [counterpartyWallet, openWalletPicker]);
+    }, [sourceWallet, openWalletPicker]);
 
+    // ─── Route preview (IBC-only: output = input, ~30s, no fee) ────────────
+    const routePreview = useMemo(() => {
+        if (!selectedAsset || !amount || parseFloat(amount) <= 0) return undefined;
+        return {
+            estimatedOutput: amount,
+            estimatedOutputTicker: selectedAsset.bzeAsset.ticker,
+            estimatedDurationSeconds: 30,
+            fees: [] as { amount: string; ticker: string; usdValue?: string }[],
+            txsRequired: 1,
+            mechanism: 'ibc' as const,
+            warning: undefined,
+            rawRoute: undefined,
+        };
+    }, [selectedAsset, amount]);
+
+    // ─── Transfer ──────────────────────────────────────────────────────────
     const {executeTransfer, isExecuting, progressMessage} = useBridgeTransfer({
         direction: 'deposit',
         asset: selectedAsset,
@@ -100,7 +121,7 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
         routePreview,
     });
 
-    // Balance gate — see `useCounterpartyBalance` for the status values.
+    // Balance gate
     const balanceAllowsTransfer = useMemo(() => {
         if (!sourceBalance) return false;
         if (sourceBalance.status === 'unsupported') return true;
@@ -109,74 +130,33 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
     }, [sourceBalance]);
 
     const canExecute = useMemo(() => {
-        return selectedChain
-            && selectedAsset
+        return selectedAsset
             && amount !== ''
             && amountError === ''
             && routePreview !== undefined
             && !isExecuting
-            && !isLoadingRoute
-            && counterpartyStatus === WalletState.Connected
+            && sourceWalletStatus === WalletState.Connected
             && balanceAllowsTransfer;
-    }, [selectedChain, selectedAsset, amount, amountError, routePreview, isExecuting, isLoadingRoute, counterpartyStatus, balanceAllowsTransfer]);
+    }, [selectedAsset, amount, amountError, routePreview, isExecuting, sourceWalletStatus, balanceAllowsTransfer]);
 
     const handleExecute = useCallback(async () => {
         const success = await executeTransfer();
         if (success) {
             setAmount('');
             setSelectedAsset(undefined);
-            setSelectedChain(undefined);
-            // IBC relaying is async — re-check the counterparty balance in a
-            // little while so a follow-up deposit sees the new state.
             setTimeout(() => refetchDepositBalance(), 4000);
             setTimeout(() => refetchDepositBalance(), 10000);
         }
     }, [executeTransfer, refetchDepositBalance]);
 
-    // ─── Chakra Select collections ─────────────────────────────────────────
-    const chainsCollection = useMemo(() => {
-        return createListCollection({
-            items: bridgeableChains.map(c => ({
-                label: c.displayName,
-                value: c.chainName,
-                logo: c.logo,
-            })),
-        });
-    }, [bridgeableChains]);
-
-    const assetsCollection = useMemo(() => {
-        const items = (selectedChain?.assets ?? []).map(a => ({
-            label: a.bzeAsset.ticker,
-            value: a.bzeAsset.denom,
-            logo: a.bzeAsset.logo,
-            displayName: a.bzeAsset.name,
-        }));
-        return createListCollection({items});
-    }, [selectedChain]);
-
-    // Auto-select first asset when a chain has only one bridgeable asset
-    useEffect(() => {
-        if (selectedChain && selectedChain.assets.length === 1) {
-            setSelectedAsset(selectedChain.assets[0]);
-        }
-    }, [selectedChain]);
-
-    const onChainChange = useCallback((chainName: string) => {
-        if (!chainName) return;
-        const chain = bridgeableChains.find(c => c.chainName === chainName);
-        setSelectedChain(chain);
-        setSelectedAsset(undefined);
-        setAmount('');
-        setAmountError('');
-    }, [bridgeableChains]);
-
+    // ─── Callbacks ─────────────────────────────────────────────────────────
     const onAssetChange = useCallback((denom: string) => {
-        if (!denom || !selectedChain) return;
-        const asset = selectedChain.assets.find(a => a.bzeAsset.denom === denom);
+        if (!denom) return;
+        const asset = bridgeableAssets.find(a => a.bzeAsset.denom === denom);
         setSelectedAsset(asset);
         setAmount('');
         setAmountError('');
-    }, [selectedChain]);
+    }, [bridgeableAssets]);
 
     const onAmountChange = useCallback((value: string) => {
         setAmount(sanitizeNumberInput(value));
@@ -196,7 +176,7 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
         }
     }, [amount, sourceBalance]);
 
-    const counterpartyDisplayName = selectedAsset?.counterparty.displayName ?? selectedChain?.displayName ?? '';
+    const sourceDisplayName = selectedAsset?.counterparty.displayName ?? '';
 
     const feeDisplay = useMemo(() => {
         if (!routePreview || routePreview.fees.length === 0) return undefined;
@@ -211,53 +191,18 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                 Deposit assets from other networks to BeeZee
             </Text>
 
-            {!isLoadingAssets && bridgeableChains.length === 0 && (
+            {/* Empty state */}
+            {!isLoadingAssets && bridgeableAssets.length === 0 && (
                 <Box p="3" bg="fg.muted/5" borderRadius="md">
                     <Text fontSize="sm" color="fg.muted">
-                        No bridgeable assets found yet. Receive an IBC asset on BeeZee first,
-                        then come back here to transfer it across chains.
+                        No depositable assets found. IBC assets will appear here once BeeZee
+                        has active connections in the chain registry.
                     </Text>
                 </Box>
             )}
 
-            {bridgeableChains.length > 0 && (
-                <Box>
-                    <Select.Root
-                        collection={chainsCollection}
-                        size="sm"
-                        value={selectedChain ? [selectedChain.chainName] : []}
-                        onValueChange={(details) => onChainChange(details.value[0] || '')}
-                    >
-                        <Select.Label>Network</Select.Label>
-                        <Select.HiddenSelect/>
-                        <Select.Control>
-                            <Select.Trigger>
-                                <Select.ValueText placeholder="Select network"/>
-                            </Select.Trigger>
-                            <Select.IndicatorGroup>
-                                <Select.Indicator/>
-                            </Select.IndicatorGroup>
-                        </Select.Control>
-                        <Portal>
-                            <Select.Positioner>
-                                <Select.Content>
-                                    {chainsCollection.items.map((item) => (
-                                        <Select.Item key={item.value} item={item}>
-                                            <HStack gap="2">
-                                                <TokenLogo src={item.logo} symbol={item.label} size="16px"/>
-                                                <Text>{item.label}</Text>
-                                            </HStack>
-                                            <Select.ItemIndicator/>
-                                        </Select.Item>
-                                    ))}
-                                </Select.Content>
-                            </Select.Positioner>
-                        </Portal>
-                    </Select.Root>
-                </Box>
-            )}
-
-            {selectedChain && selectedChain.assets.length > 1 && (
+            {/* Asset picker — flat list of all depositable assets */}
+            {bridgeableAssets.length > 0 && (
                 <Box>
                     <Select.Root
                         collection={assetsCollection}
@@ -269,7 +214,7 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                         <Select.HiddenSelect/>
                         <Select.Control>
                             <Select.Trigger>
-                                <Select.ValueText placeholder="Select asset"/>
+                                <Select.ValueText placeholder="Select asset to deposit"/>
                             </Select.Trigger>
                             <Select.IndicatorGroup>
                                 <Select.Indicator/>
@@ -280,9 +225,14 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                                 <Select.Content>
                                     {assetsCollection.items.map((item) => (
                                         <Select.Item key={item.value} item={item}>
-                                            <HStack gap="2">
-                                                <TokenLogo src={item.logo} symbol={item.label} size="16px"/>
-                                                <Text>{item.label}</Text>
+                                            <HStack gap="2" w="full" justify="space-between">
+                                                <HStack gap="2">
+                                                    <TokenLogo src={item.logo} symbol={item.label} size="16px"/>
+                                                    <Text>{item.label}</Text>
+                                                </HStack>
+                                                <Text fontSize="xs" color="fg.muted">
+                                                    {(item as any).chainDisplayName}
+                                                </Text>
                                             </HStack>
                                             <Select.ItemIndicator/>
                                         </Select.Item>
@@ -294,9 +244,10 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                 </Box>
             )}
 
-            {selectedChain && selectedChain.assets.length === 1 && selectedAsset && (
+            {/* Source chain — auto-resolved, read-only */}
+            {selectedAsset && (
                 <Box>
-                    <Text fontSize="xs" fontWeight="medium" mb="1">Asset</Text>
+                    <Text fontSize="xs" fontWeight="medium" mb="1">Source</Text>
                     <HStack
                         gap="2"
                         p="2"
@@ -304,27 +255,24 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                         borderColor={`${accentColor}.500/20`}
                         borderRadius="md"
                     >
-                        <TokenLogo
-                            src={selectedAsset.bzeAsset.logo}
-                            symbol={selectedAsset.bzeAsset.ticker}
-                            size="16px"
-                        />
-                        <Text fontSize="sm">{selectedAsset.bzeAsset.ticker}</Text>
-                        <Text fontSize="xs" color="fg.muted">{selectedAsset.bzeAsset.name}</Text>
+                        <TokenLogo src={selectedAsset.counterparty.logo} symbol={sourceDisplayName} size="16px"/>
+                        <Text fontSize="sm">{sourceDisplayName}</Text>
                     </HStack>
                 </Box>
             )}
 
+            {/* Transfer direction label */}
             {selectedAsset && (
                 <Text fontSize="xs" color="fg.muted">
-                    From {counterpartyDisplayName} → BeeZee
+                    From {sourceDisplayName} → BeeZee
                 </Text>
             )}
 
-            {selectedChain && selectedAsset && (
+            {/* Amount input */}
+            {selectedAsset && (
                 <Box>
                     <Field.Root invalid={amountError !== ''}>
-                        <Field.Label>Amount to receive</Field.Label>
+                        <Field.Label>Amount to deposit</Field.Label>
                         <Group attached w="full">
                             <Input
                                 size="sm"
@@ -345,10 +293,11 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                         <Field.ErrorText>{amountError}</Field.ErrorText>
                     </Field.Root>
 
+                    {/* Balance on source chain */}
                     {sourceBalance && (
                         <HStack justify="space-between" mt="1.5">
                             <Text fontSize="xs" color="fg.muted">
-                                Available on {counterpartyDisplayName}
+                                Available on {sourceDisplayName}
                             </Text>
                             {sourceBalance.status === 'loading' && (
                                 <Text fontSize="xs" color="fg.muted">Loading…</Text>
@@ -369,20 +318,21 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
 
                     {sourceBalance?.status === 'ready' && sourceBalance.display.isZero() && (
                         <Text fontSize="xs" color="orange.500" mt="1">
-                            You have no {selectedAsset.bzeAsset.ticker} on {counterpartyDisplayName}.
+                            You have no {selectedAsset.bzeAsset.ticker} on {sourceDisplayName}.
                         </Text>
                     )}
 
                     {sourceBalance?.status === 'unsupported' && (
                         <Text fontSize="xs" color="fg.muted" mt="1">
-                            We couldn&apos;t connect to {counterpartyDisplayName} to check your balance.
-                            The transfer might still work — double-check the amount in your wallet before signing.
+                            We couldn&apos;t connect to {sourceDisplayName} to check your balance.
+                            The transfer might still work — double-check in your wallet before signing.
                         </Text>
                     )}
                 </Box>
             )}
 
-            {routePreview && amount && !isLoadingRoute && (
+            {/* Route preview */}
+            {routePreview && amount && (
                 <Box
                     p="3"
                     bgGradient="to-br"
@@ -394,7 +344,7 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                 >
                     <VStack gap="2" align="stretch">
                         <HStack justify="space-between">
-                            <Text fontSize="sm" color="fg.muted">You receive</Text>
+                            <Text fontSize="sm" color="fg.muted">You receive on BeeZee</Text>
                             <Text fontSize="sm" fontWeight="medium" fontFamily="mono">
                                 {routePreview.estimatedOutput} {routePreview.estimatedOutputTicker}
                             </Text>
@@ -409,28 +359,23 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
                                 <Text fontSize="xs">{feeDisplay}</Text>
                             </HStack>
                         )}
-                        {routePreview.warning && (
-                            <Text fontSize="xs" color="orange.500">{routePreview.warning}</Text>
-                        )}
                     </VStack>
                 </Box>
             )}
 
-            {routeError && amount && !isLoadingRoute && (
-                <Text fontSize="sm" color="red.500">{routeError}</Text>
-            )}
-
-            {selectedChain && counterpartyStatus !== WalletState.Connected && (
+            {/* Wallet connect prompt */}
+            {selectedAsset && sourceWalletStatus !== WalletState.Connected && (
                 <VStack gap="3">
                     <Text fontSize="sm" color="fg.muted">
-                        Connect your wallet on {counterpartyDisplayName} to continue
+                        Connect your wallet on {sourceDisplayName} to continue
                     </Text>
-                    <Button size="sm" w="full" colorPalette={accentColor} onClick={handleConnectCounterparty}>
-                        Connect to {counterpartyDisplayName}
+                    <Button size="sm" w="full" colorPalette={accentColor} onClick={handleConnectSource}>
+                        Connect to {sourceDisplayName}
                     </Button>
                 </VStack>
             )}
 
+            {/* Execute */}
             <Button
                 size="sm"
                 w="full"
