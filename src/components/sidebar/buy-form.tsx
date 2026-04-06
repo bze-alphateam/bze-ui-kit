@@ -86,10 +86,35 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
         });
     }, [requiredChainIds]);
 
-    // Reset connection state when route changes
+    // When a route arrives, silently check if Keplr already has keys for all
+    // required chains. `keplr.getKey()` on an already-enabled chain returns
+    // immediately without a popup. Only `keplr.enable()` triggers the approval
+    // dialog, and we don't call that here.
     useEffect(() => {
-        setAllChainsConnected(false);
-    }, [rawRoute]);
+        if (!rawRoute?.required_chain_addresses?.length) {
+            return;
+        }
+        // Skip if already connected (don't re-check on every amount change)
+        if (allChainsConnected) return;
+
+        let cancelled = false;
+        (async () => {
+            const keplr = (window as any).keplr;
+            if (!keplr) return;
+            try {
+                for (const chainId of rawRoute.required_chain_addresses) {
+                    const key = await keplr.getKey(chainId);
+                    if (!key?.bech32Address) {
+                        return; // At least one chain not connected — leave flag as false
+                    }
+                }
+                if (!cancelled) setAllChainsConnected(true);
+            } catch {
+                // getKey throws if chain not enabled — that's fine, leave flag as false
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [rawRoute, allChainsConnected]);
 
     // Check if source wallet is connected (for balance fetch after approval)
     const sourceConnected = selectedChain?.canSign && sourceWalletStatus === WalletState.Connected;
@@ -426,7 +451,7 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
             {selectedChain && selectedAsset && (
                 <Box>
                     <Field.Root invalid={amountError !== ''}>
-                        <Field.Label>Amount to swap</Field.Label>
+                        <Field.Label>You pay</Field.Label>
                         <Group attached w="full">
                             <Input size="sm" placeholder="0.00" value={amount}
                                    onChange={(e) => onAmountChange(e.target.value)}/>
