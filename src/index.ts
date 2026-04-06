@@ -229,6 +229,8 @@ export { Toaster } from './components/toaster';
 export { HighlightText } from './components/highlight';
 export { ImageWithFallback } from './components/image';
 export { TokenLogo } from './components/token-logo';
+export type { LPTokenLogoProps } from './components/lp-token-logo';
+export { LPTokenLogo } from './components/lp-token-logo';
 export { Sidebar } from './components/sidebar/sidebar';
 export { SettingsSidebarContent } from './components/sidebar/settings-sidebar';
 export { WalletSidebarContent } from './components/sidebar/wallet-sidebar';
