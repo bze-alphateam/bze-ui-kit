@@ -4,6 +4,7 @@ import {useEffect, useMemo, useState} from "react";
 import {skipGetChains} from "../query/skip";
 import {getWalletChainsNames} from "../constants/chain";
 import type {SkipChain} from "../types/cross_chain";
+import {useEvmWalletState} from "../evm/context";
 
 /**
  * A Skip chain enriched with a `canSign` flag indicating whether the
@@ -58,6 +59,8 @@ export function useSkipChains(): UseSkipChainsResult {
         return () => { cancelled = true; };
     }, []);
 
+    const {isAvailable: evmAvailable} = useEvmWalletState();
+
     const chains = useMemo<SkipChainWithStatus[]>(() => {
         if (allChains.length === 0) return [];
 
@@ -73,15 +76,18 @@ export function useSkipChains(): UseSkipChainsResult {
             .map(c => ({
                 ...c,
                 canSign:
-                    c.chain_type === 'cosmos'
-                    && registeredNames.has((c.chain_name || '').toLowerCase()),
+                    // Cosmos: must be registered with ChainProvider
+                    (c.chain_type === 'cosmos' && registeredNames.has((c.chain_name || '').toLowerCase()))
+                    // EVM: selectable when EvmProvider is in the tree (wallet
+                    // connect happens inline after chain selection, not upfront)
+                    || (c.chain_type === 'evm' && evmAvailable),
             }))
             // Signable chains first, then alphabetical by name
             .sort((a, b) => {
                 if (a.canSign !== b.canSign) return a.canSign ? -1 : 1;
                 return (a.chain_name || '').localeCompare(b.chain_name || '');
             });
-    }, [allChains]);
+    }, [allChains, evmAvailable]);
 
     return {chains, isLoading, error};
 }

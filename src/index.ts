@@ -103,6 +103,20 @@ export {
 export { getValidatorSupportedDenoms, getValidatorPageUrl, isPoolSupportedByValidator } from './utils/validator';
 export { subscribeToBlockchainEvents } from './utils/ws_rpc_client';
 export { createSkipProxyHandler } from './utils/skip_proxy';
+export { isEvmChain, skipChainIdToEvmChainId, isEvmAddress, ERC20_APPROVE_ABI } from './utils/evm';
+
+// === EVM ===
+export { EvmWalletContext, useEvmWalletState } from './evm/context';
+export type { EvmWalletState } from './evm/context';
+export { createEvmConfig } from './evm/config';
+export type { EvmConfigOptions } from './evm/config';
+export { EvmProvider } from './components/evm-provider';
+export { useEvmWallet } from './hooks/useEvmWallet';
+export type { UseEvmWalletReturn } from './hooks/useEvmWallet';
+export { useEvmTransaction } from './hooks/useEvmTransaction';
+export type { EvmTransactionResult, UseEvmTransactionReturn } from './hooks/useEvmTransaction';
+export { useSkipTxTracker } from './hooks/useSkipTxTracker';
+export type { UseSkipTxTrackerReturn } from './hooks/useSkipTxTracker';
 
 // === Constants ===
 export {
@@ -236,6 +250,8 @@ export { Toaster } from './components/toaster';
 export { HighlightText } from './components/highlight';
 export { ImageWithFallback } from './components/image';
 export { TokenLogo } from './components/token-logo';
+export { Tooltip } from './components/tooltip';
+export type { TooltipProps } from './components/tooltip';
 export type { LPTokenLogoProps } from './components/lp-token-logo';
 export { LPTokenLogo } from './components/lp-token-logo';
 export { Sidebar } from './components/sidebar/sidebar';

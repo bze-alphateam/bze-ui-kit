@@ -55,6 +55,7 @@ export function useBuyRoute(
             dest_asset_chain_id: BZE_SKIP_CHAIN_ID,
             amount_in: uAmount,
             allow_swaps: true,
+            allow_multi_tx: true,  // Allows multi-tx routes (e.g. ERC20 approve + bridge for EVM). Safe for all chain types.
         };
         const route = await skipGetRoute(routeRequest);
 
@@ -76,10 +77,12 @@ export function useBuyRoute(
             usdValue: fee.usd_amount,
         }));
 
-        // BZE has 6 decimals — convert amount_out from ubze
+        // BZE has 6 decimals — convert amount_out from ubze, display with 2 decimals.
+        // BigInt→Number is safe here: 6 decimals means Number.MAX_SAFE_INTEGER
+        // covers ~9 billion BZE, well above any realistic swap output.
         const bzeDecimals = 6;
         const rawOut = BigInt(route.amount_out || '0');
-        const outputHuman = (Number(rawOut) / Math.pow(10, bzeDecimals)).toFixed(bzeDecimals);
+        const outputHuman = (Number(rawOut) / Math.pow(10, bzeDecimals)).toFixed(2);
 
         const preview: RoutePreview = {
             estimatedOutput: outputHuman,

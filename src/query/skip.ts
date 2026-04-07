@@ -38,7 +38,7 @@ export const skipGetChains = async (): Promise<SkipChain[]> => {
   }
 
   try {
-    const resp = await skipFetch('v2/info/chains');
+    const resp = await skipFetch('v2/info/chains?include_evm=true&include_svm=true');
     if (!resp.ok) {
       console.error('[Skip] failed to fetch chains, status:', resp.status);
       return [];
@@ -65,7 +65,7 @@ export const skipGetAssets = async (chainId: string): Promise<SkipAsset[]> => {
   }
 
   try {
-    const resp = await skipFetch(`v2/fungible/assets?chain_id=${encodeURIComponent(chainId)}`);
+    const resp = await skipFetch(`v2/fungible/assets?chain_id=${encodeURIComponent(chainId)}&include_evm_assets=true`);
     if (!resp.ok) {
       console.error('[Skip] failed to fetch assets, status:', resp.status);
       return [];
@@ -126,6 +126,25 @@ export const skipGetMsgs = async (request: SkipMsgsRequest): Promise<SkipMsgsRes
     return await resp.json();
   } catch (e) {
     console.error('[Skip] failed to get msgs:', e);
+    return undefined;
+  }
+};
+
+/**
+ * POST /v2/tx/track — Register a transaction for tracking. Must be called
+ * before `/v2/tx/status` — Skip won't return status for untracked txs.
+ */
+export const skipTrackTx = async (txHash: string, chainId: string): Promise<string | undefined> => {
+  try {
+    const resp = await skipFetch('v2/tx/track', {
+      method: 'POST',
+      body: JSON.stringify({tx_hash: txHash, chain_id: chainId}),
+    });
+    if (!resp.ok) return undefined;
+    const data = await resp.json();
+    return data?.explorer_link;
+  } catch (e) {
+    console.error('[Skip] failed to track tx:', e);
     return undefined;
   }
 };

@@ -12,66 +12,77 @@ import {
     Text,
     VStack,
 } from '@chakra-ui/react';
-import {LuX} from 'react-icons/lu';
+import {LuX, LuInfo} from 'react-icons/lu';
+import {Tooltip} from '../tooltip';
 import {useChain} from '@interchain-kit/react';
-import {WalletState} from '@interchain-kit/core';
 import {TokenLogo} from '../token-logo';
 import {useSkipChains, type SkipChainWithStatus} from '../../hooks/useSkipChains';
 import {useSkipAssets} from '../../hooks/useSkipAssets';
 import {useBuyRoute} from '../../hooks/useBuyRoute';
 import {useSkipBridgeTransfer} from '../../hooks/useSkipBridgeTransfer';
+import {useEvmWalletState} from '../../evm/context';
+import {useEvmWallet} from '../../hooks/useEvmWallet';
 import {sanitizeNumberInput} from '../../utils/number';
 import {formatDuration} from '../../utils/cross_chain';
-import {prettyAmount, uAmountToBigNumberAmount} from '../../utils/amount';
+import {prettyAmount, uAmountToBigNumberAmount, toBigNumber} from '../../utils/amount';
+import {shortNumberFormat} from '../../utils/formatter';
 import {getChainName, getChainByChainId} from '../../constants/chain';
 import {getChainRestURL} from '../../constants/endpoints';
 import {BZE_SKIP_CHAIN_ID} from '../../constants/cross_chain';
+import {skipChainIdToEvmChainId} from '../../utils/evm';
+import type {UseSkipTxTrackerReturn} from '../../hooks/useSkipTxTracker';
+import {useToast} from '../../hooks/useToast';
 import type {SkipAsset} from '../../types/cross_chain';
+
+/** SkipAsset enriched with optional balance data from the source chain. */
+interface SkipAssetWithBalance extends SkipAsset {
+    balanceRaw?: string;
+    balanceDisplay?: string;
+}
 
 interface BuyFormProps {
     accentColor: string;
     onClose?: () => void;
+    addTransaction?: UseSkipTxTrackerReturn['addTransaction'];
 }
 
-export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
+export const BuyForm = ({accentColor, onClose, addTransaction}: BuyFormProps) => {
     const [selectedChain, setSelectedChain] = useState<SkipChainWithStatus | undefined>();
     const [selectedAsset, setSelectedAsset] = useState<SkipAsset | undefined>();
     const [amount, setAmount] = useState('');
     const [amountError, setAmountError] = useState('');
     const [chainSearch, setChainSearch] = useState('');
     const [assetSearch, setAssetSearch] = useState('');
-
-    // Balances fetched after wallet connections are approved
     const [assetBalances, setAssetBalances] = useState<Map<string, string>>(new Map());
     const [isLoadingBalances, setIsLoadingBalances] = useState(false);
-
-    // Wallet connection state for all required chains
     const [allChainsConnected, setAllChainsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
+
+    // ─── Chain type detection ──────────────────────────────────────────────
+    const isSourceEvm = selectedChain?.chain_type === 'evm';
 
     // ─── Data hooks ────────────────────────────────────────────────────────
     const {chains: skipChains, isLoading: isLoadingChains, error: chainsError} = useSkipChains();
     const {assets: skipAssets, isLoading: isLoadingAssets, error: assetsError} = useSkipAssets(selectedChain?.chain_id);
     const {routePreview, rawRoute, isLoading: isLoadingRoute, error: routeError} = useBuyRoute(
-        selectedChain?.chain_id,
-        selectedAsset?.denom,
-        selectedAsset?.decimals,
-        amount,
+        selectedChain?.chain_id, selectedAsset?.denom, selectedAsset?.decimals, amount,
     );
 
-    // ─── Wallet connections ────────────────────────────────────────────────
+    // ─── Cosmos wallet ─────────────────────────────────────────────────────
     const sourceChainName = useMemo(() => {
-        if (!selectedChain || !selectedChain.canSign) return getChainName();
+        if (!selectedChain || !selectedChain.canSign || isSourceEvm) return getChainName();
         const registryChain = getChainByChainId(selectedChain.chain_id);
         return registryChain?.chainName ?? selectedChain.chain_name ?? getChainName();
-    }, [selectedChain]);
+    }, [selectedChain, isSourceEvm]);
 
-    const {
-        status: sourceWalletStatus,
-        address: sourceAddress,
-    } = useChain(sourceChainName);
-
+    const {address: sourceAddress} = useChain(sourceChainName);
     const bzeChain = useChain(getChainName());
+
+    // ─── EVM wallet ──────────────────────────────────────────────────────
+    // Both hooks are safe to call without EvmProvider — they return inert
+    // defaults when isAvailable is false.
+    const evmState = useEvmWalletState();
+    const evmWallet = useEvmWallet();
 
     // ─── Required chains from route ────────────────────────────────────────
     const requiredChainIds = useMemo<string[]>(() => {
@@ -86,74 +97,80 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
         });
     }, [requiredChainIds]);
 
-    // When a route arrives, silently check if Keplr already has keys for all
-    // required chains. `keplr.getKey()` on an already-enabled chain returns
-    // immediately without a popup. Only `keplr.enable()` triggers the approval
-    // dialog, and we don't call that here.
+    // ─── Auto-detect existing connections ──────────────────────────────────
     useEffect(() => {
-        if (!rawRoute?.required_chain_addresses?.length) {
-            return;
-        }
-        // Skip if already connected (don't re-check on every amount change)
+        if (!rawRoute?.required_chain_addresses?.length) return;
         if (allChainsConnected) return;
 
+        // For EVM source: check if EVM wallet is connected
+        if (isSourceEvm) {
+            if (evmState.isConnected) setAllChainsConnected(true);
+            return;
+        }
+
+        // For Cosmos source: check Keplr keys
         let cancelled = false;
         (async () => {
             const keplr = (window as any).keplr;
             if (!keplr) return;
             try {
                 for (const chainId of rawRoute.required_chain_addresses) {
+                    // Skip EVM chain IDs in the required list (intermediate chains
+                    // on Cosmos routes are always Cosmos)
+                    if (skipChainIdToEvmChainId(chainId) !== undefined) continue;
                     const key = await keplr.getKey(chainId);
-                    if (!key?.bech32Address) {
-                        return; // At least one chain not connected — leave flag as false
-                    }
+                    if (!key?.bech32Address) return;
                 }
                 if (!cancelled) setAllChainsConnected(true);
             } catch {
-                // getKey throws if chain not enabled — that's fine, leave flag as false
+                // Not all connected
             }
         })();
         return () => { cancelled = true; };
-    }, [rawRoute, allChainsConnected]);
+    }, [rawRoute, allChainsConnected, isSourceEvm, evmState.isConnected]);
 
-    // Check if source wallet is connected (for balance fetch after approval)
-    const sourceConnected = selectedChain?.canSign && sourceWalletStatus === WalletState.Connected;
-
-    // ─── Connect all required chains at once ───────────────────────────────
+    // ─── Connect handler (Cosmos + EVM) ────────────────────────────────────
     const handleConnectAll = useCallback(async () => {
         setIsConnecting(true);
         try {
-            const keplr = (window as any).keplr;
-            if (!keplr) {
-                setIsConnecting(false);
-                return;
-            }
-            // Enable all required chains in one go
-            for (const chainId of requiredChainIds) {
-                await keplr.enable(chainId);
+            if (isSourceEvm) {
+                // EVM: connect wallet + switch to the right chain
+                if (!evmWallet.isConnected) {
+                    await evmWallet.connectInjected();
+                }
+                const targetEvmChainId = skipChainIdToEvmChainId(selectedChain?.chain_id ?? '');
+                if (targetEvmChainId && evmWallet.chainId !== targetEvmChainId) {
+                    await evmWallet.switchChain(targetEvmChainId);
+                }
+            } else {
+                // Cosmos: enable all required chains via Keplr
+                const keplr = (window as any).keplr;
+                if (keplr) {
+                    for (const chainId of requiredChainIds) {
+                        if (skipChainIdToEvmChainId(chainId) !== undefined) continue;
+                        await keplr.enable(chainId);
+                    }
+                }
             }
             setAllChainsConnected(true);
         } catch (e) {
-            console.error('[buy] connect chains failed:', e);
+            console.error('[buy] connect failed:', e);
         } finally {
             setIsConnecting(false);
         }
-    }, [requiredChainIds]);
+    }, [isSourceEvm, requiredChainIds, selectedChain, evmWallet, evmState]);
 
-    // ─── Fetch balances once all chains connected ──────────────────────────
+    // ─── Balance fetch (Cosmos only — EVM balance fetch deferred) ──────────
     useEffect(() => {
-        if (!allChainsConnected || !selectedChain || !sourceAddress) return;
+        if (!allChainsConnected || !selectedChain || isSourceEvm) return;
+        if (!sourceAddress) return;
 
         let cancelled = false;
         setIsLoadingBalances(true);
-
         (async () => {
             const chainName = getChainByChainId(selectedChain.chain_id)?.chainName ?? selectedChain.chain_name ?? '';
             const restUrl = await getChainRestURL(chainName);
-            if (cancelled || !restUrl) {
-                setIsLoadingBalances(false);
-                return;
-            }
+            if (cancelled || !restUrl) { setIsLoadingBalances(false); return; }
             try {
                 const res = await fetch(`${restUrl}/cosmos/bank/v1beta1/balances/${sourceAddress}?pagination.limit=500`);
                 if (!res.ok) throw new Error(`REST ${res.status}`);
@@ -164,18 +181,14 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                     if (b.amount && b.amount !== '0') map.set(b.denom, b.amount);
                 }
                 if (!cancelled) setAssetBalances(map);
-            } catch {
-                // Non-critical — form works without balances
-            } finally {
-                if (!cancelled) setIsLoadingBalances(false);
-            }
+            } catch { /* non-critical */ }
+            finally { if (!cancelled) setIsLoadingBalances(false); }
         })();
-
         return () => { cancelled = true; };
-    }, [allChainsConnected, selectedChain, sourceAddress]);
+    }, [allChainsConnected, selectedChain, sourceAddress, isSourceEvm]);
 
-    // ─── Assets enriched with balances, sorted: with balance on top ────────
-    const assetsWithBalances = useMemo(() => {
+    // ─── Assets with balances ──────────────────────────────────────────────
+    const assetsWithBalances = useMemo<SkipAssetWithBalance[]>(() => {
         return skipAssets.map(a => ({
             ...a,
             balanceRaw: assetBalances.get(a.denom),
@@ -214,9 +227,19 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
 
     const getAddressForChainId = useCallback(async (chainId: string): Promise<string | undefined> => {
         if (chainId === BZE_SKIP_CHAIN_ID || chainId === 'beezee-1') return bzeChain.address;
-        if (selectedChain && chainId === selectedChain.chain_id) return sourceAddress;
+
+        // EVM chain ID → return EVM wallet address
+        const evmChainId = skipChainIdToEvmChainId(chainId);
+        if (evmChainId !== undefined && evmState.address) {
+            return evmState.address;
+        }
+
+        // Cosmos: source chain
+        if (selectedChain && chainId === selectedChain.chain_id && !isSourceEvm) return sourceAddress;
         const resolved = getChainByChainId(chainId);
         if (resolved?.chainName === getChainName()) return bzeChain.address;
+
+        // Cosmos intermediate chain via Keplr
         try {
             const keplr = (window as any).keplr;
             if (keplr) {
@@ -227,7 +250,7 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
             console.error(`[buy] could not get address for chain ${chainId}:`, e);
         }
         return undefined;
-    }, [bzeChain.address, sourceAddress, selectedChain]);
+    }, [bzeChain.address, sourceAddress, selectedChain, isSourceEvm, evmState.address]);
 
     // ─── Execute ───────────────────────────────────────────────────────────
     const canExecute = useMemo(() => {
@@ -236,53 +259,60 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
             && amount !== ''
             && amountError === ''
             && rawRoute
-            && rawRoute.txs_required <= 1
             && !isExecuting
             && !isLoadingRoute
             && allChainsConnected
             && bzeChain.address;
     }, [selectedChain, selectedAsset, amount, amountError, rawRoute, isExecuting, isLoadingRoute, allChainsConnected, bzeChain.address]);
 
+    const {toast} = useToast();
+
     const handleExecute = useCallback(async () => {
-        if (!rawRoute) return;
+        if (!rawRoute || !selectedChain || !selectedAsset) return;
         const result = await executeSkipTransfer(rawRoute, getAddressForChainId);
         if (result.success) {
-            setAmount('');
-            setSelectedAsset(undefined);
-            setSelectedChain(undefined);
-            setChainSearch('');
-            setAssetSearch('');
-            setAssetBalances(new Map());
+            // Track the transaction for status polling
+            addTransaction?.({
+                direction: 'deposit',
+                sourceChainName: selectedChain.pretty_name || selectedChain.chain_name || selectedChain.chain_id,
+                destChainName: 'BeeZee',
+                assetTicker: selectedAsset.symbol || '?',
+                amountIn: amount,
+                estimatedAmountOut: routePreview?.estimatedOutput || '?',
+                mechanism: 'skip',
+                txHash: result.txHash,
+                broadcastChainId: result.chainId,
+            });
+            toast.success(
+                'Swap submitted',
+                'Your transaction is being processed. You can track its progress in the wallet view.',
+            );
+            // Reset form and close the Buy BZE view so the user sees
+            // the pending transaction in the balances view.
+            setAmount(''); setSelectedAsset(undefined); setSelectedChain(undefined);
+            setChainSearch(''); setAssetSearch(''); setAssetBalances(new Map());
             setAllChainsConnected(false);
+            onClose?.();
         } else if (result.error) {
             setAmountError(result.error);
         }
-    }, [rawRoute, executeSkipTransfer, getAddressForChainId]);
+    }, [rawRoute, selectedChain, selectedAsset, amount, routePreview, executeSkipTransfer, getAddressForChainId, addTransaction, toast, onClose]);
 
     // ─── Callbacks ─────────────────────────────────────────────────────────
     const onChainSelect = useCallback((chain: SkipChainWithStatus) => {
         if (!chain.canSign) return;
-        setSelectedChain(chain);
-        setSelectedAsset(undefined);
-        setAmount('');
-        setAmountError('');
-        setChainSearch('');
-        setAssetSearch('');
-        setAssetBalances(new Map());
-        setAllChainsConnected(false);
+        setSelectedChain(chain); setSelectedAsset(undefined);
+        setAmount(''); setAmountError(''); setChainSearch(''); setAssetSearch('');
+        setAssetBalances(new Map()); setAllChainsConnected(false);
     }, []);
 
     const onAssetSelect = useCallback((asset: SkipAsset) => {
-        setSelectedAsset(asset);
-        setAmount('');
-        setAmountError('');
-        setAssetSearch('');
-        setAllChainsConnected(false);
+        setSelectedAsset(asset); setAmount(''); setAmountError('');
+        setAssetSearch(''); setAllChainsConnected(false);
     }, []);
 
     const onAmountChange = useCallback((value: string) => {
-        setAmount(sanitizeNumberInput(value));
-        setAmountError('');
+        setAmount(sanitizeNumberInput(value)); setAmountError('');
     }, []);
 
     const setMaxAmount = useCallback(() => {
@@ -298,12 +328,17 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
     const feeDisplay = useMemo(() => {
         if (!routePreview || routePreview.fees.length === 0) return undefined;
         return routePreview.fees
-            .map(f => (f.usdValue ? `$${prettyAmount(f.usdValue)}` : `${f.amount} ${f.ticker}`))
+            .map(f => {
+                if (f.usdValue) {
+                    const usd = parseFloat(f.usdValue);
+                    return `$${isNaN(usd) ? f.usdValue : usd.toFixed(2)}`;
+                }
+                return `${f.amount} ${f.ticker}`;
+            })
             .join(' + ');
     }, [routePreview]);
 
-    // Whether we need the connect step (route loaded, not yet connected)
-    const needsConnect = rawRoute && rawRoute.txs_required <= 1 && requiredChainIds.length > 0 && !allChainsConnected;
+    const needsConnect = rawRoute && requiredChainIds.length > 0 && !allChainsConnected;
 
     return (
         <VStack gap="4" align="stretch">
@@ -311,15 +346,19 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
             <HStack justify="space-between" align="center">
                 <Text fontSize="sm" fontWeight="medium">Buy BZE</Text>
                 {onClose && (
-                    <Button size="xs" variant="ghost" onClick={onClose}>
-                        <LuX size="14"/>
-                    </Button>
+                    <Button size="xs" variant="ghost" onClick={onClose}><LuX size="14"/></Button>
                 )}
             </HStack>
 
-            <Text fontSize="sm" color="fg.muted">
-                Swap assets from other networks to BZE
-            </Text>
+            <Text fontSize="sm" color="fg.muted">Swap assets from other networks to BZE</Text>
+
+            <Box p="2" bg={`${accentColor}.500/10`} borderRadius="md" borderWidth="1px" borderColor={`${accentColor}.500/20`}>
+                <Text fontSize="xs" color="fg.muted">
+                    Get your BZE! Pick any coin from any supported network and we&apos;ll find the
+                    best route to get you BZE in minutes — sometimes even seconds. Not every route
+                    is available yet, but feel free to explore and try different options.
+                </Text>
+            </Box>
 
             {/* ── Chain picker ──────────────────────────────────────────────── */}
             {chainsError && <Text fontSize="sm" color="red.500">{chainsError}</Text>}
@@ -327,23 +366,15 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
             {!selectedChain && !isLoadingChains && skipChains.length > 0 && (
                 <Box>
                     <Text fontSize="xs" fontWeight="medium" mb="1">Pay with assets from</Text>
-                    <Input
-                        size="sm"
-                        placeholder="Search network..."
-                        value={chainSearch}
-                        onChange={(e) => setChainSearch(e.target.value)}
-                        mb="2"
-                    />
+                    <Input size="sm" placeholder="Search network..." value={chainSearch}
+                           onChange={(e) => setChainSearch(e.target.value)} mb="2"/>
                     <Box maxH="200px" overflowY="auto" borderWidth="1px" borderColor={`${accentColor}.500/20`} borderRadius="md">
                         {filteredChains.map(c => (
-                            <HStack
-                                key={c.chain_id} gap="2" px="3" py="1.5"
-                                cursor={c.canSign ? "pointer" : "not-allowed"}
-                                opacity={c.canSign ? 1 : 0.5}
-                                _hover={c.canSign ? {bg: `${accentColor}.500/10`} : {}}
-                                onClick={() => onChainSelect(c)}
-                                justify="space-between"
-                            >
+                            <HStack key={c.chain_id} gap="2" px="3" py="1.5"
+                                    cursor={c.canSign ? "pointer" : "not-allowed"}
+                                    opacity={c.canSign ? 1 : 0.5}
+                                    _hover={c.canSign ? {bg: `${accentColor}.500/10`} : {}}
+                                    onClick={() => onChainSelect(c)} justify="space-between">
                                 <HStack gap="2">
                                     <TokenLogo src={c.logo_uri || ''} symbol={c.pretty_name || c.chain_name || '?'} size="16px"/>
                                     <Text fontSize="sm">{c.pretty_name || c.chain_name}</Text>
@@ -363,7 +394,6 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                     <Text fontSize="xs" color="fg.muted">Loading available networks...</Text>
                     <Box h="3" w="70%" bg={`${accentColor}.500/10`} borderRadius="sm" animation="pulse"/>
                     <Box h="3" w="50%" bg={`${accentColor}.500/10`} borderRadius="sm" animation="pulse"/>
-                    <Box h="3" w="60%" bg={`${accentColor}.500/10`} borderRadius="sm" animation="pulse"/>
                 </VStack>
             )}
 
@@ -399,23 +429,19 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                     {!isLoadingAssets && assetsWithBalances.length > 0 && (
                         <>
                             <Text fontSize="xs" fontWeight="medium" mb="1">Asset to swap</Text>
-                            <Input
-                                size="sm" placeholder="Search asset..."
-                                value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} mb="2"
-                            />
+                            <Input size="sm" placeholder="Search asset..." value={assetSearch}
+                                   onChange={(e) => setAssetSearch(e.target.value)} mb="2"/>
                             <Box maxH="200px" overflowY="auto" borderWidth="1px" borderColor={`${accentColor}.500/20`} borderRadius="md">
                                 {filteredAssets.map(a => (
-                                    <HStack
-                                        key={a.denom} gap="2" px="3" py="1.5"
-                                        cursor="pointer" _hover={{bg: `${accentColor}.500/10`}}
-                                        onClick={() => onAssetSelect(a)} justify="space-between"
-                                    >
+                                    <HStack key={a.denom} gap="2" px="3" py="1.5" cursor="pointer"
+                                            _hover={{bg: `${accentColor}.500/10`}}
+                                            onClick={() => onAssetSelect(a)} justify="space-between">
                                         <HStack gap="2">
                                             <TokenLogo src={a.logo_uri || ''} symbol={a.symbol || '?'} size="16px"/>
                                             <Text fontSize="sm">{a.symbol}</Text>
                                         </HStack>
-                                        {(a as any).balanceDisplay ? (
-                                            <Text fontSize="xs" fontFamily="mono" color="fg.muted">{(a as any).balanceDisplay}</Text>
+                                        {a.balanceDisplay ? (
+                                            <Text fontSize="xs" fontFamily="mono" color="fg.muted">{a.balanceDisplay}</Text>
                                         ) : (
                                             <Text fontSize="xs" color="fg.muted">{a.name}</Text>
                                         )}
@@ -447,7 +473,7 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                 </Box>
             )}
 
-            {/* ── Amount input (works without wallet) ───────────────────────── */}
+            {/* ── Amount input ───────────────────────────────────────────────── */}
             {selectedChain && selectedAsset && (
                 <Box>
                     <Field.Root invalid={amountError !== ''}>
@@ -462,7 +488,6 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                         <Field.ErrorText>{amountError}</Field.ErrorText>
                     </Field.Root>
 
-                    {/* Balance (shown after wallet connected) */}
                     {allChainsConnected && isLoadingBalances && (
                         <Text fontSize="xs" color="fg.muted" mt="1.5">Fetching your balance...</Text>
                     )}
@@ -477,22 +502,37 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                 </Box>
             )}
 
-            {/* ── Route preview (works without wallet) ──────────────────────── */}
+            {/* ── Route preview ──────────────────────────────────────────────── */}
             {routePreview && amount && !isLoadingRoute && (
-                <Box
-                    p="3" bgGradient="to-br"
-                    gradientFrom={`${accentColor}.500/8`} gradientTo={`${accentColor}.600/8`}
-                    borderRadius="md" borderWidth="1px" borderColor={`${accentColor}.500/20`}
-                >
+                <Box p="3" bgGradient="to-br" gradientFrom={`${accentColor}.500/8`} gradientTo={`${accentColor}.600/8`}
+                     borderRadius="md" borderWidth="1px" borderColor={`${accentColor}.500/20`}>
                     <VStack gap="2" align="stretch">
                         <HStack justify="space-between">
-                            <Text fontSize="sm" color="fg.muted">You receive</Text>
-                            <Text fontSize="sm" fontWeight="medium" fontFamily="mono">{routePreview.estimatedOutput} BZE</Text>
+                            <HStack gap="1">
+                                <Text fontSize="sm" color="fg.muted">Estimated output</Text>
+                                <Tooltip
+                                    showArrow
+                                    openDelay={100}
+                                    content="This is an estimate based on current prices. The final amount may vary slightly due to price changes during the transfer. A 3% slippage protection is applied — if the price moves beyond that, the transaction will be reverted and your funds returned."
+                                    contentProps={{maxW: '250px', fontSize: 'xs'}}
+                                >
+                                    <Box as="span" cursor="help" color="fg.muted" display="inline-flex" alignItems="center">
+                                        <LuInfo size="12"/>
+                                    </Box>
+                                </Tooltip>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="medium" fontFamily="mono">~{shortNumberFormat(toBigNumber(routePreview.estimatedOutput))} BZE</Text>
                         </HStack>
                         <HStack justify="space-between">
                             <Text fontSize="xs" color="fg.muted">Estimated time</Text>
                             <Text fontSize="xs">{formatDuration(routePreview.estimatedDurationSeconds)}</Text>
                         </HStack>
+                        {rawRoute && rawRoute.txs_required > 1 && (
+                            <HStack justify="space-between">
+                                <Text fontSize="xs" color="fg.muted">Steps</Text>
+                                <Text fontSize="xs">{rawRoute.txs_required} (approval + bridge)</Text>
+                            </HStack>
+                        )}
                         {feeDisplay && (
                             <HStack justify="space-between">
                                 <Text fontSize="xs" color="fg.muted">Fee</Text>
@@ -518,42 +558,58 @@ export const BuyForm = ({accentColor, onClose}: BuyFormProps) => {
                 <Text fontSize="sm" color="red.500">{routeError}</Text>
             )}
 
-            {rawRoute && rawRoute.txs_required > 1 && (
-                <Box p="3" bg="orange.500/10" borderRadius="md" borderWidth="1px" borderColor="orange.500/30">
-                    <Text fontSize="sm" color="orange.600">
-                        This route requires multiple steps and is not supported yet. Try a different asset or amount.
-                    </Text>
-                </Box>
-            )}
-
-            {/* ── Connect wallets (shown instead of Buy when not connected) ── */}
+            {/* ── Connect wallets ────────────────────────────────────────────── */}
             {needsConnect && (
                 <VStack gap="2" p="3" bg={`${accentColor}.500/5`} borderRadius="md">
-                    <Text fontSize="sm" color="fg.muted">
-                        To complete this swap, your wallet needs access to{' '}
-                        <Text as="span" fontWeight="medium">{requiredChainNames.join(', ')}</Text>.
-                        This lets us sign and route the transaction on your behalf.
-                    </Text>
-                    <Button
-                        size="sm" w="full" colorPalette={accentColor}
-                        onClick={handleConnectAll}
-                        loading={isConnecting}
-                        loadingText="Connecting..."
-                    >
-                        Approve connections
-                    </Button>
+                    {isSourceEvm ? (
+                        <>
+                            <Text fontSize="sm" color="fg.muted">
+                                Connect your EVM wallet to complete this swap on {sourceDisplayName}.
+                            </Text>
+                            {evmState.isAvailable && !evmWallet.isConnected && (
+                                <HStack gap="2" w="full">
+                                    {evmWallet.hasInjected && (
+                                        <Button flex="1" size="sm" colorPalette={accentColor}
+                                                onClick={async () => { setIsConnecting(true); try { await evmWallet.connectInjected(); setAllChainsConnected(true); } catch {} finally { setIsConnecting(false); } }}
+                                                loading={isConnecting}>
+                                            MetaMask
+                                        </Button>
+                                    )}
+                                    <Button flex="1" size="sm" variant="outline" colorPalette={accentColor}
+                                            onClick={async () => { setIsConnecting(true); try { await evmWallet.connectWalletConnect(); setAllChainsConnected(true); } catch {} finally { setIsConnecting(false); } }}
+                                            loading={isConnecting}>
+                                        WalletConnect
+                                    </Button>
+                                </HStack>
+                            )}
+                            {!evmState.isAvailable && (
+                                <Text fontSize="xs" color="orange.500">
+                                    EVM wallet support is not configured in this app.
+                                </Text>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <Text fontSize="sm" color="fg.muted">
+                                To complete this swap, your wallet needs access to{' '}
+                                <Text as="span" fontWeight="medium">{requiredChainNames.join(', ')}</Text>.
+                                This lets us sign and route the transaction on your behalf.
+                            </Text>
+                            <Button size="sm" w="full" colorPalette={accentColor}
+                                    onClick={handleConnectAll} loading={isConnecting} loadingText="Connecting...">
+                                Approve connections
+                            </Button>
+                        </>
+                    )}
                 </VStack>
             )}
 
-            {/* ── Buy BZE button (only after all connections approved) ──────── */}
-            {(!needsConnect) && (
-                <Button
-                    size="sm" w="full" colorPalette={accentColor}
-                    disabled={!canExecute}
-                    loading={isExecuting}
-                    loadingText={progressMessage || "Swapping..."}
-                    onClick={handleExecute}
-                >
+            {/* ── Buy BZE button ─────────────────────────────────────────────── */}
+            {!needsConnect && (
+                <Button size="sm" w="full" colorPalette={accentColor}
+                        disabled={!canExecute} loading={isExecuting}
+                        loadingText={progressMessage || "Swapping..."}
+                        onClick={handleExecute}>
                     Buy BZE
                 </Button>
             )}

@@ -193,6 +193,10 @@ export interface CrossChainTxRecord {
   txHash?: string;
   broadcastChainId?: string;           // Chain where the tx was broadcast (for status polling)
   error?: string;
+  /** Explorer URL for the broadcast transaction (e.g. bscscan, mintscan). */
+  explorerLink?: string;
+  /** Last raw status response from Skip — used to render hop details in the tx modal. */
+  lastStatus?: SkipTxStatusResponse;
 }
 
 // ─── Skip Chain & Asset Types (from API responses) ───

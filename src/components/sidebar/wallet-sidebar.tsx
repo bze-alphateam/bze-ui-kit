@@ -40,9 +40,12 @@ import {HighlightText} from "../highlight";
 import {useIsInHub} from "@bze/hub-connector";
 import {BridgeForm} from './bridge-form';
 import {BuyForm} from './buy-form';
+import {PendingTransactions} from './pending-transactions';
+import {TxDetailsModal} from './tx-details-modal';
+import {useSkipTxTracker} from '../../hooks/useSkipTxTracker';
 import {isCrossChainEnabled} from '../../constants/cross_chain';
 
-type ViewState = 'balances' | 'send' | 'transfer' | 'buy'
+type ViewState = 'balances' | 'send' | 'transfer' | 'buy' | 'txDetails'
 
 interface WalletSidebarContentProps {
     accentColor?: string
@@ -441,6 +444,10 @@ const SendForm = ({balances, onClose, selectedTicker, accentColor}: {balances: A
 
 export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = false }: WalletSidebarContentProps) => {
     const [viewState, setViewState] = useState<ViewState>('balances')
+    const [selectedTxId, setSelectedTxId] = useState<string>('')
+    // Single tracker instance for the entire sidebar — shared by pending list,
+    // tx details view, and buy form via props.
+    const txTracker = useSkipTxTracker();
     const [isDisconnecting, setIsDisconnecting] = useState(false)
     const [showCopiedTooltip, setShowCopiedTooltip] = useState(false)
     const [clickedBalance, setClickedBalance] = useState('')
@@ -702,10 +709,24 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
 
             {/* Quick Actions + Content */}
             {status === WalletState.Connected && viewState === 'balances' && renderQuickActions()}
+            {status === WalletState.Connected && viewState === 'balances' && txTracker.transactions.length > 0 && (
+                <PendingTransactions
+                    transactions={txTracker.transactions}
+                    onDismiss={txTracker.dismissTransaction}
+                    onSelect={(tx) => { setSelectedTxId(tx.id); setViewState('txDetails'); }}
+                    accentColor={accentColor}
+                />
+            )}
             {status === WalletState.Connected && viewState === 'balances' && renderBalancesView()}
             {status === WalletState.Connected && viewState === 'send' && <SendForm balances={sortedBalances} onClose={handleCancel} selectedTicker={clickedBalance} accentColor={accentColor}/>}
             {status === WalletState.Connected && crossChainEnabled && viewState === 'transfer' && <BridgeForm accentColor={accentColor} onClose={() => setViewState('balances')} />}
-            {status === WalletState.Connected && crossChainEnabled && viewState === 'buy' && <BuyForm accentColor={accentColor} onClose={() => setViewState('balances')} />}
+            {status === WalletState.Connected && crossChainEnabled && viewState === 'buy' && <BuyForm accentColor={accentColor} onClose={() => setViewState('balances')} addTransaction={txTracker.addTransaction} />}
+            {status === WalletState.Connected && viewState === 'txDetails' && selectedTxId && (() => {
+                const tx = txTracker.transactions.find(t => t.id === selectedTxId);
+                if (!tx) return null;
+                return <TxDetailsModal tx={tx} onClose={() => setViewState('balances')} accentColor={accentColor}/>;
+            })()}
         </VStack>
     )
 }
+
