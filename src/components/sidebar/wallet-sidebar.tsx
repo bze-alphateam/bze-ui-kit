@@ -43,7 +43,7 @@ import {BuyForm} from './buy-form';
 import {PendingTransactions} from './pending-transactions';
 import {TxDetailsModal} from './tx-details-modal';
 import {useSkipTxTracker} from '../../hooks/useSkipTxTracker';
-import {isCrossChainEnabled} from '../../constants/cross_chain';
+import {isCrossChainEnabled, isSkipEnabled} from '../../constants/cross_chain';
 
 type ViewState = 'balances' | 'send' | 'transfer' | 'buy' | 'txDetails'
 
@@ -454,6 +454,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
     const copyButtonRef = useRef<HTMLButtonElement>(null)
     const inHub = useIsInHub();
     const crossChainEnabled = useMemo(() => isCrossChainEnabled(), []);
+    const skipEnabled = useMemo(() => isSkipEnabled(), []);
 
     const {
         status,
@@ -562,7 +563,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
                     </Button>
                 )}
             </HStack>
-            {crossChainEnabled && (
+            {skipEnabled && (
                 <Button
                     w="full"
                     size="xs"
@@ -720,7 +721,7 @@ export const WalletSidebarContent = ({ accentColor = 'blue', skipWalletModal = f
             {status === WalletState.Connected && viewState === 'balances' && renderBalancesView()}
             {status === WalletState.Connected && viewState === 'send' && <SendForm balances={sortedBalances} onClose={handleCancel} selectedTicker={clickedBalance} accentColor={accentColor}/>}
             {status === WalletState.Connected && crossChainEnabled && viewState === 'transfer' && <BridgeForm accentColor={accentColor} onClose={() => setViewState('balances')} />}
-            {status === WalletState.Connected && crossChainEnabled && viewState === 'buy' && <BuyForm accentColor={accentColor} onClose={() => setViewState('balances')} addTransaction={txTracker.addTransaction} />}
+            {status === WalletState.Connected && skipEnabled && viewState === 'buy' && <BuyForm accentColor={accentColor} onClose={() => setViewState('balances')} addTransaction={txTracker.addTransaction} />}
             {status === WalletState.Connected && viewState === 'txDetails' && selectedTxId && (() => {
                 const tx = txTracker.transactions.find(t => t.id === selectedTxId);
                 if (!tx) return null;

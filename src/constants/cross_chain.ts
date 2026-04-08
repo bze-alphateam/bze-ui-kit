@@ -20,12 +20,30 @@ export const BZE_NATIVE_DENOM = 'ubze';
 
 // ─── Feature flag ───────────────────────────────────────────────────────
 
-/** Whether the cross-chain bridge feature is enabled. Default: true. */
+/**
+ * Whether IBC deposit/withdraw is enabled. This is chain-native (no Skip)
+ * and works on both mainnet and testnet — the asset list is derived from
+ * whatever assets the chain has, so testnet only shows testnet IBC assets.
+ * Default: true. Override with `NEXT_PUBLIC_CROSS_CHAIN_ENABLED=false`.
+ */
 export const isCrossChainEnabled = (): boolean => {
     if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_CROSS_CHAIN_ENABLED !== undefined) {
         return process.env.NEXT_PUBLIC_CROSS_CHAIN_ENABLED !== 'false';
     }
     return true;
+};
+
+/**
+ * Whether Skip-powered features (Buy BZE, swap routes) are available.
+ * Always false on testnet — Skip has no BZE testnet chain ID (bzetestnet-3).
+ * On mainnet, follows `isCrossChainEnabled()`.
+ */
+export const isSkipEnabled = (): boolean => {
+    // Read the env var directly to avoid a circular import with chain.ts.
+    const isTestnet = process.env?.NEXT_PUBLIC_CHAIN_IS_TESTNET;
+    if (isTestnet === 'true' || isTestnet === '1') return false;
+
+    return isCrossChainEnabled();
 };
 
 // ─── Skip proxy URL (Phase 2) ───────────────────────────────────────────

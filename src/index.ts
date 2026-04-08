@@ -146,7 +146,7 @@ export { MAINNET_CHAIN_INFO_FALLBACK, TESTNET_CHAIN_INFO_FALLBACK } from './cons
 export { BZE_TESTNET_2_SUGGEST_CHAIN, BZE_TESTNET_NETWORK } from './constants/testnet';
 export {
     BZE_SKIP_CHAIN_ID, BZE_NATIVE_DENOM,
-    getSkipProxyUrl, isCrossChainEnabled,
+    getSkipProxyUrl, isCrossChainEnabled, isSkipEnabled,
     getDeniedChains, getDeniedAssets, isChainDenied, isAssetDenied,
 } from './constants/cross_chain';
 
