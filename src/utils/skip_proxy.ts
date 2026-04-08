@@ -72,7 +72,7 @@ export function createSkipProxyHandler(options?: SkipProxyOptions) {
 
     const handler = async (
         req: Request,
-        context: { params: Promise<{ path: string[] }> | { path: string[] } },
+        context: { params: Promise<{ path: string[] }> },
     ): Promise<Response> => {
         const params = await context.params;
         const path = params.path.join('/');
