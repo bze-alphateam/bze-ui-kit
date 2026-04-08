@@ -2,7 +2,6 @@
 
 import {useEffect, useMemo, useState} from "react";
 import {skipGetChains} from "../query/skip";
-import {getWalletChainsNames} from "../constants/chain";
 import type {SkipChain} from "../types/cross_chain";
 import {useEvmWalletState} from "../evm/context";
 
@@ -64,11 +63,6 @@ export function useSkipChains(): UseSkipChainsResult {
     const chains = useMemo<SkipChainWithStatus[]>(() => {
         if (allChains.length === 0) return [];
 
-        // Build a set of chain names registered with ChainProvider
-        const registeredNames = new Set<string>(
-            getWalletChainsNames().map((c: any) => (c.chainName || '').toLowerCase()),
-        );
-
         return allChains
             .filter(c => !c.is_testnet)
             // Exclude BZE itself — it's the destination
@@ -76,10 +70,10 @@ export function useSkipChains(): UseSkipChainsResult {
             .map(c => ({
                 ...c,
                 canSign:
-                    // Cosmos: must be registered with ChainProvider
-                    (c.chain_type === 'cosmos' && registeredNames.has((c.chain_name || '').toLowerCase()))
-                    // EVM: selectable when EvmProvider is in the tree (wallet
-                    // connect happens inline after chain selection, not upfront)
+                    // Cosmos: always selectable — chains are dynamically registered
+                    // with ChainProvider when the user picks one in the Buy BZE form
+                    c.chain_type === 'cosmos'
+                    // EVM: selectable when EvmProvider is in the tree
                     || (c.chain_type === 'evm' && evmAvailable),
             }))
             // Signable chains first, then alphabetical by name

@@ -14,7 +14,7 @@ import {
 } from '@chakra-ui/react';
 import {LuX, LuInfo} from 'react-icons/lu';
 import {Tooltip} from '../tooltip';
-import {useChain} from '@interchain-kit/react';
+import {useChain, useWalletManager} from '@interchain-kit/react';
 import {TokenLogo} from '../token-logo';
 import {useSkipChains, type SkipChainWithStatus} from '../../hooks/useSkipChains';
 import {useSkipAssets} from '../../hooks/useSkipAssets';
@@ -26,7 +26,7 @@ import {sanitizeNumberInput} from '../../utils/number';
 import {formatDuration} from '../../utils/cross_chain';
 import {prettyAmount, uAmountToBigNumberAmount, toBigNumber} from '../../utils/amount';
 import {shortNumberFormat} from '../../utils/formatter';
-import {getChainName, getChainByChainId} from '../../constants/chain';
+import {getChainName, getChainByChainId, getWalletChainsNames, getChains, getAssetLists} from '../../constants/chain';
 import {getChainRestURL} from '../../constants/endpoints';
 import {BZE_SKIP_CHAIN_ID} from '../../constants/cross_chain';
 import {skipChainIdToEvmChainId} from '../../utils/evm';
@@ -69,11 +69,43 @@ export const BuyForm = ({accentColor, onClose, addTransaction}: BuyFormProps) =>
     );
 
     // ─── Cosmos wallet ─────────────────────────────────────────────────────
+    // Chains are dynamically registered with ChainProvider when the user selects
+    // them in the Buy BZE picker. Only BZE's IBC counterparties are pre-registered
+    // at mount; all other Cosmos chains (e.g. Injective, Stride) get added on demand
+    // via walletManager.addChains() when selected. This avoids loading 100+ chains
+    // at startup (which causes Keplr errors for broken/unknown chains) while still
+    // letting useChain() work for any chain the user actually picks.
+    const walletManager = useWalletManager();
+    const [registeredChainNames, setRegisteredChainNames] = useState(() =>
+        new Set(getWalletChainsNames().map((c: any) => (c.chainName || '').toLowerCase()))
+    );
+
+    // Dynamically register a chain with ChainProvider when user selects it
+    const ensureChainRegistered = useCallback(async (chainName: string) => {
+        if (registeredChainNames.has(chainName.toLowerCase())) return;
+        const allChains = getChains() as any[];
+        const chain = allChains.find((c: any) => (c.chainName || '').toLowerCase() === chainName.toLowerCase());
+        if (!chain) return;
+        const allAssetLists = getAssetLists() as any[];
+        const assetList = allAssetLists.find((a: any) => (a.chainName || '').toLowerCase() === chainName.toLowerCase());
+        try {
+            await (walletManager as any).addChains(
+                [chain],
+                assetList ? [assetList] : [],
+                {signing: () => ({preferredSignType: 'amino'})},
+            );
+            setRegisteredChainNames(prev => new Set([...prev, chainName.toLowerCase()]));
+        } catch (e) {
+            console.error('[buy] failed to register chain dynamically:', chainName, e);
+        }
+    }, [walletManager]);
+
     const sourceChainName = useMemo(() => {
         if (!selectedChain || !selectedChain.canSign || isSourceEvm) return getChainName();
         const registryChain = getChainByChainId(selectedChain.chain_id);
-        return registryChain?.chainName ?? selectedChain.chain_name ?? getChainName();
-    }, [selectedChain, isSourceEvm]);
+        const name = registryChain?.chainName ?? selectedChain.chain_name ?? '';
+        return registeredChainNames.has(name.toLowerCase()) ? name : getChainName();
+    }, [selectedChain, isSourceEvm, registeredChainNames]);
 
     const {address: sourceAddress} = useChain(sourceChainName);
     const bzeChain = useChain(getChainName());
@@ -299,12 +331,19 @@ export const BuyForm = ({accentColor, onClose, addTransaction}: BuyFormProps) =>
     }, [rawRoute, selectedChain, selectedAsset, amount, routePreview, executeSkipTransfer, getAddressForChainId, addTransaction, toast, onClose]);
 
     // ─── Callbacks ─────────────────────────────────────────────────────────
-    const onChainSelect = useCallback((chain: SkipChainWithStatus) => {
+    const onChainSelect = useCallback(async (chain: SkipChainWithStatus) => {
         if (!chain.canSign) return;
+        // For Cosmos chains not yet registered with ChainProvider, register
+        // them now so useChain/useSDKTx can work when the user proceeds to sign.
+        if (chain.chain_type === 'cosmos') {
+            const registryChain = getChainByChainId(chain.chain_id);
+            const name = registryChain?.chainName ?? chain.chain_name ?? '';
+            if (name) await ensureChainRegistered(name);
+        }
         setSelectedChain(chain); setSelectedAsset(undefined);
         setAmount(''); setAmountError(''); setChainSearch(''); setAssetSearch('');
         setAssetBalances(new Map()); setAllChainsConnected(false);
-    }, []);
+    }, [ensureChainRegistered]);
 
     const onAssetSelect = useCallback((asset: SkipAsset) => {
         setSelectedAsset(asset); setAmount(''); setAmountError('');

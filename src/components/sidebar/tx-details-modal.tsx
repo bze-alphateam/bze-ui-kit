@@ -10,7 +10,7 @@ import {
     Text,
     VStack,
 } from '@chakra-ui/react';
-import {LuChevronDown, LuCopy, LuExternalLink, LuX} from 'react-icons/lu';
+import {LuChevronRight, LuCopy, LuExternalLink, LuX} from 'react-icons/lu';
 import type {CrossChainTxRecord, SkipTransferEvent} from '../../types/cross_chain';
 import {openExternalLink} from '../../utils/functions';
 import {txStateLabel, txStateColor, isPendingState} from '../../utils/tx_state';
@@ -131,6 +131,7 @@ export const TxDetailsModal = ({tx, onClose, accentColor}: TxDetailsModalProps) 
     const allHops = transfers.flatMap(t => t.transfer_sequence ?? []);
     const hasHops = allHops.length > 0;
     const isPending = isPendingState(tx.state);
+    const [detailsOpen, setDetailsOpen] = useState(isPending);
 
     return (
         <VStack gap="4" align="stretch">
@@ -188,11 +189,13 @@ export const TxDetailsModal = ({tx, onClose, accentColor}: TxDetailsModalProps) 
             )}
 
             {/* Transfer details — collapsible, includes broadcast tx + hops */}
-            <Collapsible.Root defaultOpen={isPending}>
+            <Collapsible.Root defaultOpen={isPending} onOpenChange={(details) => setDetailsOpen(details.open)}>
                 <Collapsible.Trigger asChild>
                     <Button size="sm" variant="ghost" w="full" justifyContent="space-between">
                         <Text fontSize="xs" fontWeight="medium">Transfer details</Text>
-                        <LuChevronDown size="14"/>
+                        <Box transition="transform 0.2s" transform={detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)'}>
+                            <LuChevronRight size="14"/>
+                        </Box>
                     </Button>
                 </Collapsible.Trigger>
                 <Collapsible.Content>

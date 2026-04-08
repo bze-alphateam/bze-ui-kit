@@ -88,15 +88,16 @@ export const getWalletChainsNames = () => {
     const baseNames = new Set<string>(envNames)
     baseNames.add(getChainName())
 
-    // When the cross-chain bridge is enabled, register ALL Cosmos mainnet
-    // chains from chain-registry. This is needed for the "Buy BZE" feature
-    // which uses Skip to swap from ANY Cosmos chain (not just direct IBC
-    // counterparties). ChainProvider registration is just in-memory data —
-    // no network calls happen until the user actually connects a chain.
+    // When cross-chain is enabled, register BZE's direct IBC counterparties
+    // from chain-registry. These are known-good chains that Keplr supports.
+    // We do NOT register ALL chains — many obscure/testnet chains in the
+    // registry would cause Keplr errors ("no modular chain info for X").
+    // For Buy BZE (Skip), chains outside this list are handled via direct
+    // Keplr calls (keplr.enable + keplr.getKey) without needing ChainProvider.
     if (isCrossChainEnabled()) {
-        for (const chain of localChains) {
-            if (isChainDenied(chain.chainName)) continue
-            baseNames.add(chain.chainName)
+        for (const name of getBzeIbcCounterparties()) {
+            if (isChainDenied(name)) continue
+            baseNames.add(name)
         }
     }
 
