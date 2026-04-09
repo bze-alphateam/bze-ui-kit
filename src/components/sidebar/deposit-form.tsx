@@ -23,6 +23,7 @@ import {useCounterpartyBalance} from '../../hooks/useCounterpartyBalance';
 import {sanitizeNumberInput} from '../../utils/number';
 import {formatDuration} from '../../utils/cross_chain';
 import {prettyAmount, uAmountToBigNumberAmount} from '../../utils/amount';
+import {getChainName} from '../../constants/chain';
 
 interface DepositFormProps {
     accentColor: string;
@@ -57,7 +58,7 @@ export const DepositForm = ({accentColor}: DepositFormProps) => {
     }, [bridgeableAssets]);
 
     // ─── Counterparty wallet ───────────────────────────────────────────────
-    const sourceChainName = selectedAsset?.counterparty.chainName ?? 'beezee';
+    const sourceChainName = selectedAsset?.counterparty.chainName ?? getChainName();
     const {
         status: sourceWalletStatus,
         connect: openWalletPicker,

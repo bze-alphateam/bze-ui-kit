@@ -26,6 +26,7 @@ import {useBridgeTransfer} from '../../hooks/useBridgeTransfer';
 import {sanitizeNumberInput} from '../../utils/number';
 import {prettyAmount, uAmountToBigNumberAmount} from '../../utils/amount';
 import {formatDuration} from '../../utils/cross_chain';
+import {getChainName} from '../../constants/chain';
 
 interface WithdrawFormProps {
     accentColor: string;
@@ -87,7 +88,7 @@ export const WithdrawForm = ({accentColor}: WithdrawFormProps) => {
     }, [selectedAsset]);
 
     // ─── Counterparty wallet ───────────────────────────────────────────────
-    const destChainName = selectedDestination?.chainName ?? 'beezee';
+    const destChainName = selectedDestination?.chainName ?? getChainName();
     const {
         status: destWalletStatus,
         connect: openWalletPicker,
