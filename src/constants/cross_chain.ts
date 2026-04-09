@@ -40,7 +40,10 @@ export const isCrossChainEnabled = (): boolean => {
  */
 export const isSkipEnabled = (): boolean => {
     // Read the env var directly to avoid a circular import with chain.ts.
-    const isTestnet = process.env?.NEXT_PUBLIC_CHAIN_IS_TESTNET;
+    // NOTE: must use `process.env.X` (not `process.env?.X`) so that Next.js
+    // recognises the pattern and inlines the value at build time.  Optional
+    // chaining compiles (via tsup) to a temp variable that Next.js won't match.
+    const isTestnet = process.env.NEXT_PUBLIC_CHAIN_IS_TESTNET;
     if (isTestnet === 'true' || isTestnet === '1') return false;
 
     return isCrossChainEnabled();
