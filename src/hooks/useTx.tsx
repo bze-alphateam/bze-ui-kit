@@ -4,7 +4,8 @@ import {useChain} from "@interchain-kit/react";
 import {CosmosWallet} from "@interchain-kit/core";
 import {DirectSigner} from "@interchainjs/cosmos/signers/direct-signer";
 import {createCosmosQueryClient} from "@interchainjs/cosmos";
-import {getChainExplorerURL, getChainName, getGasMultiplier, getGasPrice, getNonNativeGasMultiplier} from "../constants/chain";
+import {getChainExplorerURL, getChainName, getForeignFeeSlippage, getGasMultiplier, getGasPrice, getNonNativeGasMultiplier} from "../constants/chain";
+import {getTxFeeCollectorParams} from "../query/txfeecollector_params";
 import {useToast} from "./useToast";
 import {prettyError} from "../utils/user_errors";
 import {getChainNativeAssetDenom} from "../constants/assets";
@@ -17,7 +18,6 @@ import {useLiquidityPools} from "./useLiquidityPools";
 import {useSettings} from "./useSettings";
 import {useFeeTokens} from "./useFeeTokens";
 import {calculatePoolOppositeAmount} from "../utils/liquidity_pool";
-import {toBigNumber} from "../utils/amount";
 import {coins} from "../utils/coins";
 import {registerBzeEncoders} from "../utils/signing_client_setup";
 
@@ -164,8 +164,20 @@ const useTx = (chainName: string) => {
     }, [isSigningClientReady, signingClientError]);
 
     const simulateFee = useCallback(async (messages: EncodeObject[], memo: string | undefined): Promise<StdFee> => {
-        const gasPrice = getGasPrice();
         const nativeDenom = getChainNativeAssetDenom();
+
+        // Prefer the chain's validator_min_gas_fee param over the env default, so
+        // governance changes propagate without a frontend redeploy. Fall back to env
+        // if the query fails or returns an unexpected denom.
+        let gasPrice = getGasPrice();
+        const txFeeParams = await getTxFeeCollectorParams();
+        if (txFeeParams?.validatorMinGasFee?.denom === nativeDenom) {
+            const chainGasPrice = parseFloat(txFeeParams.validatorMinGasFee.amount);
+            if (!isNaN(chainGasPrice) && chainGasPrice > 0) {
+                gasPrice = chainGasPrice;
+            }
+        }
+
         const signer = signingClient as any;
 
         // Encode messages into TxBody using the signer's own encoders
@@ -213,12 +225,10 @@ const useTx = (chainName: string) => {
         if (!expectedAmount.isPositive()) {
             return nativeFee;
         }
-        expectedAmount = expectedAmount.multipliedBy(1.1).integerValue(BigNumber.ROUND_CEIL)
-        //if the fee resulted from swapping the fee amount is lower than 1, it can't be paid.
-        //we have to make sure the blockchain can capture the swap fee.
-        if (expectedAmount.multipliedBy(pool.fee).lt(1)) {
-            expectedAmount = toBigNumber(1).dividedBy(pool.fee).integerValue(BigNumber.ROUND_CEIL)
-        }
+        // Apply slippage buffer (default 10%) to absorb pool drift between simulation and inclusion.
+        // ROUND_CEIL guarantees at least 1 unit of the foreign denom; if the swap fee rounds to 0
+        // on-chain, the txfeecollector module accumulates the dust until it can be swapped.
+        expectedAmount = expectedAmount.multipliedBy(getForeignFeeSlippage()).integerValue(BigNumber.ROUND_CEIL)
 
         return {
             amount: coins(expectedAmount.toFixed(0).toString(), feeDenom),

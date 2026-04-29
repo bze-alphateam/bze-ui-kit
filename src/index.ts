@@ -128,7 +128,8 @@ export {
 export {
     getChainId, getChainName, isTestnetChain, getChains, getChainByChainId,
     getChainByName, getWalletChainsNames, getAssetLists, getIBCAssetList,
-    getChainAddressPrefix, getChainExplorerURL, getLockerAddress, getGasPrice, getNonNativeGasMultiplier
+    getChainAddressPrefix, getChainExplorerURL, getLockerAddress, getGasPrice, getNonNativeGasMultiplier,
+    getForeignFeeSlippage
 } from './constants/chain';
 export {
     getRestURL, getRpcURL, getArchwayRpcURL, getOsmosisRpcUrl, getNobleRpcUrl,
@@ -186,6 +187,7 @@ export {
 } from './query/markets';
 export { getBZEUSDPrice } from './query/prices';
 export { getTradebinParams } from './query/tradebin_params';
+export { getTxFeeCollectorParams } from './query/txfeecollector_params';
 export {
     getStakingRewards, getAddressPendingUnlock, getPendingUnlockParticipants,
     getStakingRewardParticipantByAddress, getAddressStakingRewards

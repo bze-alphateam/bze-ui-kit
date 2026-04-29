@@ -154,3 +154,8 @@ export const getNonNativeGasMultiplier = (): number => {
     const val = parseFloat(process.env.NEXT_PUBLIC_NON_NATIVE_GAS_MULTIPLIER || '');
     return isNaN(val) || val <= 0 ? 1.5 : val;
 }
+
+export const getForeignFeeSlippage = (): number => {
+    const val = parseFloat(process.env.NEXT_PUBLIC_FOREIGN_FEE_SLIPPAGE || '');
+    return isNaN(val) || val < 1 ? 1.1 : val;
+}
