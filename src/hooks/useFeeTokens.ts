@@ -7,7 +7,7 @@ import { toBigNumber } from "../utils/amount";
 import { getTradebinParams } from "../query/tradebin_params";
 
 // Fallback if on-chain params can't be fetched
-const DEFAULT_MIN_LIQUIDITY_FOR_FEE_TOKEN = 50000000000;
+const DEFAULT_MIN_LIQUIDITY_FOR_FEE_TOKEN = 100000000000;
 
 export function useFeeTokens() {
     const { pools, isLoading: poolsLoading } = useLiquidityPools();
