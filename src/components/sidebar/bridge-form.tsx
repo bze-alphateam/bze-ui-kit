@@ -2,10 +2,13 @@
 
 import {useState} from 'react';
 import {Button, HStack, Text, VStack} from '@chakra-ui/react';
-import {LuX} from 'react-icons/lu';
+import {LuX, LuExternalLink} from 'react-icons/lu';
 import type {TransferDirection} from '../../types/cross_chain';
 import {DepositForm} from './deposit-form';
 import {WithdrawForm} from './withdraw-form';
+import {openExternalLink} from '../../utils/functions';
+
+const SKIP_GO_URL = 'https://go.skip.build/?dest_chain=beezee-1&dest_asset=ubze';
 
 interface BridgeFormProps {
     accentColor: string;
@@ -59,6 +62,19 @@ export const BridgeForm = ({accentColor, onClose}: BridgeFormProps) => {
             {/* Sub-form — each direction is self-contained */}
             {direction === 'deposit' && <DepositForm accentColor={accentColor}/>}
             {direction === 'withdraw' && <WithdrawForm accentColor={accentColor}/>}
+
+            {/* External Skip.go bridge — for routes outside our IBC counterparties */}
+            <Button
+                size="sm"
+                variant="outline"
+                colorPalette={accentColor}
+                onClick={() => openExternalLink(SKIP_GO_URL)}
+            >
+                <HStack gap="1.5">
+                    <Text fontSize="sm">Use Skip.go</Text>
+                    <LuExternalLink size="12"/>
+                </HStack>
+            </Button>
         </VStack>
     );
 };
